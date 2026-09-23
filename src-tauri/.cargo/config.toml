@@ -1,0 +1,6 @@
+[env]
+PKG_CONFIG_PATH = { value = "/home/xaneodev/.local/share/pkgconfig", relative = false }
+LIBRARY_PATH = { value = "/home/xaneodev/.local/lib", relative = false }
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-L", "/home/xaneodev/.local/lib"]
