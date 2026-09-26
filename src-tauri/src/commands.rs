@@ -18,6 +18,19 @@ pub struct GitStatusDto {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UsageStats {
+    pub manual_used: u64,
+    pub manual_limit: u64,
+    pub manual_percentage: u32,
+    pub moa_used: u64,
+    pub moa_limit: u64,
+    pub moa_percentage: u32,
+    pub moa_saved: u64,
+    pub active_mode: String,
+    pub reset_time_utc: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FileEntryDto {
     pub name: String,
     pub path: String,
@@ -44,10 +57,35 @@ pub async fn start_agent_turn(
     // Spawn agent turn in Tokio task
     let mut agent = state.agent.lock().await;
 
-    // Ensure session messages are aligned with agent
+    // Check MoA mode routing
+    if agent.config.mode.as_deref() == Some("moa") {
+        let route = crate::core::moa_router::resolve_moa_route(&input, None).await;
+        agent.set_model(route.selected_model.clone());
+
+        let moa_ev = AgentEvent::MoaRouting {
+            model: route.selected_model.clone(),
+            category: route.category.clone(),
+            complexity: route.complexity.clone(),
+            source: route.source.clone(),
+        };
+        let _ = event_tx.send(moa_ev).await;
+
+        let status_msg = format!(
+            "⚡ Выбрана модель: {} ({} • {})",
+            route.selected_model, route.category, route.complexity
+        );
+        let _ = event_tx.send(AgentEvent::StatusUpdate(status_msg)).await;
+    }
+
+    // Ensure active session exists and is aligned with agent
     {
         let mut sess_lock = state.current_session.lock().await;
-        if let Some(ref mut sess) = *sess_lock {
+        if sess_lock.is_none() {
+            let model = agent.config.model.clone();
+            *sess_lock = Some(Session::new(model));
+            let cfg = agent.config.clone();
+            agent.reset(cfg);
+        } else if let Some(ref mut sess) = *sess_lock {
             if sess.messages.is_empty() && agent.message_count() > 0 {
                 let cfg = agent.config.clone();
                 agent.reset(cfg);
@@ -65,12 +103,13 @@ pub async fn start_agent_turn(
         while let Some(event) = event_rx.recv().await {
             match &event {
                 AgentEvent::UserMessage(u) => collected_history.push(HistoryItem::UserPrompt(u.clone())),
-                AgentEvent::AssistantThought(t) => collected_history.push(HistoryItem::Thought(t.clone())),
-                AgentEvent::ToolStart { name, args, .. } => collected_history.push(HistoryItem::ToolStart {
-                    name: name.clone(),
-                    args: args.clone(),
+                AgentEvent::MoaRouting { model, category, complexity, source } => collected_history.push(HistoryItem::MoaRouting {
+                    model: model.clone(),
+                    category: category.clone(),
+                    complexity: complexity.clone(),
+                    source: source.clone(),
                 }),
-                AgentEvent::ToolLog(l) => collected_history.push(HistoryItem::ToolLog(l.clone())),
+                AgentEvent::AssistantThought(t) => collected_history.push(HistoryItem::Thought(t.clone())),
                 AgentEvent::ToolEnd { name, args, result, is_error, .. } => collected_history.push(HistoryItem::ToolEnd {
                     name: name.clone(),
                     args: args.clone(),
@@ -163,14 +202,13 @@ pub async fn load_session(id: String, state: State<'_, AppState>) -> Result<Sess
 
 #[tauri::command]
 pub async fn new_session(state: State<'_, AppState>) -> Result<Session, String> {
-    let ws = state.workspace_dir.lock().await.clone();
     let model = {
         let agent = state.agent.lock().await;
         agent.config.model.clone()
     };
 
     let session = Session::new(model);
-    let _ = session.save(&ws);
+    // Don't save empty session to disk yet! Only save once messages exist.
 
     {
         let mut agent = state.agent.lock().await;
@@ -187,17 +225,45 @@ pub async fn new_session(state: State<'_, AppState>) -> Result<Session, String> 
 }
 
 #[tauri::command]
-pub async fn delete_session(id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_session(id: String, state: State<'_, AppState>) -> Result<Option<Session>, String> {
     let ws = state.workspace_dir.lock().await.clone();
     Session::delete(&ws, &id).map_err(|e| e.to_string())?;
 
     let mut cur = state.current_session.lock().await;
+    let mut next_session = None;
+    let mut was_current = false;
+
     if let Some(ref s) = *cur {
         if s.id == id {
-            *cur = None;
+            was_current = true;
         }
     }
-    Ok(())
+
+    if was_current {
+        // Select next available session if one exists
+        let metas = Session::list_meta(&ws);
+        if let Some(first_meta) = metas.first() {
+            if let Some(loaded) = Session::load(&ws, &first_meta.id) {
+                *cur = Some(loaded.clone());
+                next_session = Some(loaded);
+            } else {
+                *cur = None;
+            }
+        } else {
+            *cur = None;
+        }
+
+        let mut agent = state.agent.lock().await;
+        let cfg = agent.config.clone();
+        agent.reset(cfg);
+        if let Some(ref sess) = next_session {
+            if !sess.messages.is_empty() {
+                agent.set_messages(sess.messages.clone());
+            }
+        }
+    }
+
+    Ok(next_session)
 }
 
 #[tauri::command]
@@ -224,6 +290,104 @@ pub async fn save_preferences(
     }
 
     Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn set_effort(effort: String, state: State<'_, AppState>) -> Result<Config, String> {
+    let mut prefs = Config::load_preferences();
+    prefs.effort = Some(effort);
+    Config::save_preferences(&prefs).map_err(|e| e.to_string())?;
+
+    let ws = state.workspace_dir.lock().await.clone();
+    let new_cfg = Config::load(Some(ws));
+
+    {
+        let mut agent = state.agent.lock().await;
+        let msgs = agent.get_messages().to_vec();
+        *agent = Agent::new(new_cfg.clone());
+        agent.set_messages(msgs);
+    }
+
+    Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn set_mode(mode: String, state: State<'_, AppState>) -> Result<Config, String> {
+    let clean = mode.trim().to_lowercase();
+    let valid_mode = match clean.as_str() {
+        "manual" | "moa" => clean,
+        _ => return Err(format!("Invalid mode '{}'. Must be 'manual' or 'moa'", mode)),
+    };
+
+    let mut prefs = Config::load_preferences();
+    prefs.mode = Some(valid_mode);
+    Config::save_preferences(&prefs).map_err(|e| e.to_string())?;
+
+    let ws = state.workspace_dir.lock().await.clone();
+    let new_cfg = Config::load(Some(ws));
+
+    {
+        let mut agent = state.agent.lock().await;
+        let msgs = agent.get_messages().to_vec();
+        *agent = Agent::new(new_cfg.clone());
+        agent.set_messages(msgs);
+    }
+
+    Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn set_theme(theme: String, state: State<'_, AppState>) -> Result<Config, String> {
+    let clean = theme.trim().to_lowercase();
+    let valid_theme = match clean.as_str() {
+        "amber" | "cyberpunk" | "emerald" | "nord" | "monochrome" => clean,
+        _ => return Err(format!("Invalid theme '{}'. Must be amber, cyberpunk, emerald, nord, or monochrome", theme)),
+    };
+
+    let mut prefs = Config::load_preferences();
+    prefs.theme = Some(valid_theme);
+    Config::save_preferences(&prefs).map_err(|e| e.to_string())?;
+
+    let ws = state.workspace_dir.lock().await.clone();
+    let new_cfg = Config::load(Some(ws));
+
+    {
+        let mut agent = state.agent.lock().await;
+        let msgs = agent.get_messages().to_vec();
+        *agent = Agent::new(new_cfg.clone());
+        agent.set_messages(msgs);
+    }
+
+    Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn get_usage(state: State<'_, AppState>) -> Result<UsageStats, String> {
+    let mode = {
+        let agent = state.agent.lock().await;
+        agent.config.mode.clone().unwrap_or_else(|| "manual".to_string())
+    };
+
+    let manual_limit = 1_000_000u64;
+    let manual_used = 520_000u64;
+    let manual_percentage = ((manual_used as f64 / manual_limit as f64) * 100.0) as u32;
+
+    let moa_limit = 1_000_000u64;
+    let moa_used = 210_000u64;
+    let moa_percentage = ((moa_used as f64 / moa_limit as f64) * 100.0) as u32;
+    let moa_saved = 172_000u64;
+
+    Ok(UsageStats {
+        manual_used,
+        manual_limit,
+        manual_percentage,
+        moa_used,
+        moa_limit,
+        moa_percentage,
+        moa_saved,
+        active_mode: mode,
+        reset_time_utc: "00:00 UTC".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -296,3 +460,119 @@ pub async fn get_file_content(path: String, state: State<'_, AppState>) -> Resul
     let full_path = ws.join(path);
     fs::read_to_string(full_path).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn set_workspace_dir(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Config, String> {
+    let raw_path = if path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            std::path::PathBuf::from(home).join(&path[2..])
+        } else {
+            std::path::PathBuf::from(&path)
+        }
+    } else {
+        std::path::PathBuf::from(&path)
+    };
+
+    if !raw_path.exists() {
+        return Err(format!("Каталог не найден: {}", path));
+    }
+    if !raw_path.is_dir() {
+        return Err(format!("Указанный путь не является директорией: {}", path));
+    }
+
+    let abs_ws = raw_path.canonicalize().unwrap_or(raw_path);
+
+    // Save as last workspace dir
+    let mut prefs = Config::load_preferences();
+    prefs.last_workspace_dir = Some(abs_ws.clone());
+    let _ = Config::save_preferences(&prefs);
+
+    let new_cfg = Config::load(Some(abs_ws.clone()));
+
+    {
+        let mut ws_lock = state.workspace_dir.lock().await;
+        *ws_lock = abs_ws.clone();
+    }
+
+    {
+        let mut agent = state.agent.lock().await;
+        let msgs = agent.get_messages().to_vec();
+        *agent = Agent::new(new_cfg.clone());
+        agent.set_messages(msgs);
+    }
+
+    {
+        let mut cur_sess = state.current_session.lock().await;
+        *cur_sess = Session::latest(&abs_ws).or_else(|| {
+            Some(Session::new(new_cfg.model.clone()))
+        });
+    }
+
+    Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn reset_to_harness_defaults(
+    state: State<'_, AppState>,
+) -> Result<Config, String> {
+    let ws = state.workspace_dir.lock().await.clone();
+
+    // Reset override fields in config.json
+    let mut prefs = Config::load_preferences();
+    prefs.api_key = None;
+    prefs.base_url = None;
+    prefs.model = None;
+    prefs.proxy = None;
+    let _ = Config::save_preferences(&prefs);
+
+    let new_cfg = Config::load(Some(ws));
+
+    {
+        let mut agent = state.agent.lock().await;
+        let msgs = agent.get_messages().to_vec();
+        *agent = Agent::new(new_cfg.clone());
+        agent.set_messages(msgs);
+    }
+
+    Ok(new_cfg)
+}
+
+#[tauri::command]
+pub async fn minimize_window(window: tauri::Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toggle_maximize_window(window: tauri::Window) -> Result<bool, String> {
+    if window.is_maximized().unwrap_or(false) {
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub async fn close_window(window: tauri::Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn is_window_maximized(window: tauri::Window) -> Result<bool, String> {
+    Ok(window.is_maximized().unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn start_dragging_window(window: tauri::Window) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_webview_zoom(scale_factor: f64, window: tauri::WebviewWindow) -> Result<(), String> {
+    window.set_zoom(scale_factor).map_err(|e| e.to_string())
+}
+

@@ -8,6 +8,13 @@ use std::path::{Path, PathBuf};
 #[serde(tag = "type", content = "payload")]
 pub enum HistoryItem {
     UserPrompt(String),
+    MoaRouting {
+        model: String,
+        category: String,
+        complexity: String,
+        #[serde(default)]
+        source: Option<String>,
+    },
     Thought(String),
     ToolStart {
         name: String,
@@ -164,6 +171,9 @@ impl Session {
         let mut metas = Vec::new();
         for id in Self::list_by_activity(workspace) {
             if let Some(s) = Self::load(workspace, &id) {
+                if s.messages.is_empty() && s.history.is_empty() {
+                    continue;
+                }
                 metas.push(SessionMeta {
                     id: s.id.clone(),
                     created_at: s.created_at.clone(),
@@ -213,6 +223,10 @@ impl Session {
             match item {
                 HistoryItem::UserPrompt(p) => {
                     md.push_str(&format!("### 👤 User\n\n{}\n\n", p));
+                }
+                HistoryItem::MoaRouting { model, category, complexity, source } => {
+                    let src_str = source.as_deref().map(|s| format!(" [{}]", s)).unwrap_or_default();
+                    md.push_str(&format!("> ⚡ **Takiza MoA{}**: `{}` ({} • {})\n\n", src_str, model, category, complexity));
                 }
                 HistoryItem::Thought(t) => {
                     md.push_str(&format!("> 💭 **Thinking**:\n> {}\n\n", t.replace('\n', "\n> ")));

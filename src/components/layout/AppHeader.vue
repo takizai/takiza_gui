@@ -1,26 +1,50 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import { useAgentStore } from "../../stores/agentStore";
+import WindowControls from "./WindowControls.vue";
+import { handleWindowDrag, handleWindowDblClick } from "../../utils/window";
+import ModelContextMenu from "../common/ModelContextMenu.vue";
 import {
-  Sparkles,
-  GitBranch,
   Settings,
   ShieldCheck,
   ShieldAlert,
-  Loader2,
-  Terminal,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronDown,
+  Gauge,
+  Zap,
 } from "lucide-vue-next";
+
+const props = defineProps<{
+  sidebarOpen: boolean;
+}>();
 
 const emit = defineEmits<{
   (e: "open-settings"): void;
+  (e: "open-usage"): void;
+  (e: "toggle-sidebar"): void;
 }>();
 
 const agentStore = useAgentStore();
+const isModelMenuOpen = ref(false);
 
-const isDirty = computed(() => agentStore.gitStatus?.is_dirty);
-const branchName = computed(() => agentStore.gitStatus?.branch || "no-git");
-const currentModel = computed(() => agentStore.config?.model || "Takiza AI");
+const isMoa = computed(() => agentStore.config?.mode === "moa");
+
+const currentModelShort = computed(() => {
+  const m = agentStore.config?.model || "Takiza AI";
+  return m.split("/").pop() || m;
+});
+
 const autoApprove = computed(() => agentStore.config?.auto_approve ?? false);
+
+async function toggleMode() {
+  const next = isMoa.value ? "manual" : "moa";
+  try {
+    await agentStore.setMode(next);
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 async function toggleAutoApprove() {
   if (!agentStore.config) return;
@@ -36,96 +60,130 @@ async function toggleAutoApprove() {
 
 <template>
   <header
-    class="h-14 border-b border-neutral-800 bg-neutral-900/60 backdrop-blur-md px-4 flex items-center justify-between z-20 shrink-0"
+    class="h-11 border-b border-white/[0.06] bg-[#07080a]/95 backdrop-blur-xl px-3 flex items-center justify-between z-10 shrink-0 select-none cursor-default"
+    data-tauri-drag-region
+    @mousedown="handleWindowDrag"
+    @dblclick="handleWindowDblClick"
   >
-    <!-- Brand / Title -->
-    <div class="flex items-center gap-3">
-      <div
-        class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20"
+    <!-- Left: Sidebar toggle & Session title -->
+    <div class="flex items-center gap-2.5 min-w-0" data-tauri-drag-region>
+      <button
+        @click="emit('toggle-sidebar')"
+        class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors cursor-pointer shrink-0"
+        :title="sidebarOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'"
       >
-        <Sparkles class="w-4 h-4 text-white" />
-      </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="font-bold text-sm tracking-wide text-neutral-100">Takiza</span>
-          <span class="text-xs px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">
-            GUI
-          </span>
-        </div>
-        <p class="text-[10px] text-neutral-400 font-mono truncate max-w-[200px]">
-          {{ agentStore.config?.workspace_dir || "Workspace" }}
-        </p>
+        <PanelLeftClose v-if="sidebarOpen" class="w-4 h-4" />
+        <PanelLeftOpen v-else class="w-4 h-4" />
+      </button>
+
+      <div class="h-3.5 w-px bg-white/[0.08]" />
+
+      <!-- Active Session Title (Draggable) -->
+      <div class="flex items-center gap-2 min-w-0" data-tauri-drag-region>
+        <span class="text-xs font-medium text-zinc-300 truncate max-w-[200px] sm:max-w-[320px]">
+          {{ agentStore.currentSession?.title || "Новый диалог" }}
+        </span>
       </div>
     </div>
 
-    <!-- Center status -->
-    <div class="flex items-center gap-3">
-      <!-- Git Branch -->
-      <div
-        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono bg-neutral-800/80 border border-neutral-700/60 text-neutral-300"
-      >
-        <GitBranch class="w-3.5 h-3.5 text-neutral-400" />
-        <span>{{ branchName }}</span>
-        <span
-          v-if="isDirty"
-          class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"
-          title="Modified files"
-        />
-      </div>
+    <!-- Center Drag Region Spacer -->
+    <div class="flex-1 h-full min-w-4" data-tauri-drag-region />
 
-      <!-- Agent Status Indicator -->
+    <!-- Right Controls: Model Pill, Safe Mode, Status, Settings, Custom Window Controls -->
+    <div class="flex items-center gap-2 shrink-0">
+      <!-- Status Indicator -->
       <div
-        class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border"
+        class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
         :class="
           agentStore.isStreaming
-            ? 'bg-blue-950/60 text-blue-300 border-blue-800/80'
-            : 'bg-neutral-800/50 text-neutral-400 border-neutral-700/40'
+            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+            : 'bg-white/[0.03] text-zinc-400 border-white/[0.06]'
         "
       >
-        <Loader2 v-if="agentStore.isStreaming" class="w-3.5 h-3.5 animate-spin text-blue-400" />
+        <l-tailspin v-if="agentStore.isStreaming" size="12" stroke="2" speed="0.9" color="#f59e0b"></l-tailspin>
         <span
           v-else
-          class="w-2 h-2 rounded-full bg-emerald-500"
+          class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
         />
-        <span>{{ agentStore.statusText }}</span>
+        <span class="hidden sm:inline font-mono">{{ agentStore.statusText }}</span>
       </div>
-    </div>
 
-    <!-- Right Controls -->
-    <div class="flex items-center gap-2.5">
-      <!-- Model Badge -->
-      <div
-        class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono bg-neutral-800/60 border border-neutral-700/60 text-neutral-300 max-w-[220px] truncate"
-        :title="currentModel"
-      >
-        <Terminal class="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-        <span class="truncate">{{ currentModel }}</span>
+      <!-- Model Picker with Context Menu Popover (hidden in MoA mode) -->
+      <div v-if="!isMoa" class="relative">
+        <button
+          @click="isModelMenuOpen = !isModelMenuOpen"
+          @contextmenu.prevent="isModelMenuOpen = true"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.08] text-zinc-300 hover:text-white transition-all cursor-pointer group"
+          :title="`Текущая модель: ${agentStore.config?.model}. Нажмите для выбора из меню`"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400/90 group-hover:scale-125 transition-transform" />
+          <span class="max-w-[110px] sm:max-w-[150px] truncate text-[11px]">{{ currentModelShort }}</span>
+          <ChevronDown class="w-3 h-3 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+        </button>
+
+        <ModelContextMenu
+          :is-open="isModelMenuOpen"
+          direction="down"
+          align="right"
+          @close="isModelMenuOpen = false"
+          @open-settings="emit('open-settings')"
+        />
       </div>
 
       <!-- Auto Approve Toggle -->
       <button
         @click="toggleAutoApprove"
-        class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer"
         :class="
           autoApprove
-            ? 'bg-amber-950/40 border-amber-800/60 text-amber-300 hover:bg-amber-900/50'
-            : 'bg-neutral-800/40 border-neutral-700/50 text-neutral-400 hover:bg-neutral-800/80'
+            ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+            : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
         "
-        :title="autoApprove ? 'Auto-approve commands enabled (Danger)' : 'Ask permission before running bash commands'"
+        :title="autoApprove ? 'Auto-Approve активен' : 'Safe Mode'"
       >
         <ShieldAlert v-if="autoApprove" class="w-3.5 h-3.5 text-amber-400" />
-        <ShieldCheck v-else class="w-3.5 h-3.5 text-neutral-400" />
-        <span class="hidden sm:inline">{{ autoApprove ? "Auto-Approve" : "Safe Mode" }}</span>
+        <ShieldCheck v-else class="w-3.5 h-3.5 text-zinc-400" />
+        <span class="hidden md:inline text-[11px]">{{ autoApprove ? "Auto" : "Safe" }}</span>
       </button>
 
-      <!-- Settings Button -->
+      <!-- Takiza Mode Switcher Button (Manual / MoA) -->
+      <button
+        @click="toggleMode"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer"
+        :class="
+          isMoa
+            ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
+            : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
+        "
+        :title="isMoa ? 'Takiza MoA: авто-роутинг (~45% экономии токенов). Нажмите для переключения на Manual' : 'Takiza Manual: ручной выбор модели. Нажмите для переключения на MoA'"
+      >
+        <Zap v-if="isMoa" class="w-3.5 h-3.5 text-emerald-400 fill-current" />
+        <span class="text-[11px] font-mono">{{ isMoa ? "MoA" : "Manual" }}</span>
+      </button>
+
+      <!-- Usage Quota Dashboard Button -->
+      <button
+        @click="emit('open-usage')"
+        class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors border border-transparent hover:border-white/[0.06] cursor-pointer"
+        title="Лимиты и расход токенов (Usage Quotas)"
+      >
+        <Gauge class="w-4 h-4" />
+      </button>
+
+      <!-- Settings Icon -->
       <button
         @click="emit('open-settings')"
-        class="p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-700/60 text-neutral-300 hover:text-white transition-colors border border-neutral-700/40 cursor-pointer"
-        title="Settings"
+        class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors border border-transparent hover:border-white/[0.06] cursor-pointer"
+        title="Настройки"
       >
         <Settings class="w-4 h-4" />
       </button>
+
+      <!-- Divider -->
+      <div class="h-4 w-px bg-white/[0.08] mx-0.5" />
+
+      <!-- Custom Window Controls (_ □ ✕) -->
+      <WindowControls />
     </div>
   </header>
 </template>

@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { AgentEvent, Session, Config, AppPreferences, GitStatus } from "../types";
+import type { AgentEvent, Session, Config, AppPreferences, GitStatus, UsageStats, AppMode, ThemeName } from "../types";
 
 export const useAgentStore = defineStore("agent", () => {
   const currentSession = ref<Session | null>(null);
@@ -14,10 +14,18 @@ export const useAgentStore = defineStore("agent", () => {
   const pendingPermission = ref<{ id: string; name: string; command: string } | null>(null);
   const gitStatus = ref<GitStatus | null>(null);
   const config = ref<Config | null>(null);
+  const usageStats = ref<UsageStats | null>(null);
+  const currentTurnMoaModel = ref<string | null>(null);
+
+  function applyTheme(themeName?: string | null) {
+    const th = themeName || "amber";
+    document.documentElement.setAttribute("data-theme", th);
+  }
 
   async function init() {
     try {
       config.value = await invoke<Config>("get_config");
+      applyTheme(config.value?.theme);
     } catch (e) {
       console.error("Failed to load config:", e);
     }
@@ -33,6 +41,12 @@ export const useAgentStore = defineStore("agent", () => {
     } catch (e) {
       console.error("Failed to load git status:", e);
     }
+
+    try {
+      await loadUsage();
+    } catch (e) {
+      // Non-critical on init
+    }
   }
 
   async function sendPrompt(input: string) {
@@ -44,6 +58,7 @@ export const useAgentStore = defineStore("agent", () => {
     currentStreamThought.value = "";
     streamingToolLogs.value = [];
     activeToolCall.value = null;
+    currentTurnMoaModel.value = null;
 
     if (!currentSession.value) {
       currentSession.value = {
@@ -67,6 +82,35 @@ export const useAgentStore = defineStore("agent", () => {
       switch (event.type) {
         case "StatusUpdate":
           statusText.value = event.payload;
+          if (event.payload.includes("⚡ Выбрана модель:")) {
+            const m = event.payload.match(/⚡ Выбрана модель:\s*([^\s(]+)/);
+            if (m && m[1]) {
+              currentTurnMoaModel.value = m[1];
+            }
+          }
+          break;
+
+        case "MoaRouting":
+          currentTurnMoaModel.value = event.payload.model;
+          if (currentSession.value) {
+            const history = currentSession.value.history;
+            const last = history[history.length - 1];
+            if (
+              !last ||
+              last.type !== "MoaRouting" ||
+              last.payload.model !== event.payload.model
+            ) {
+              history.push({
+                type: "MoaRouting",
+                payload: {
+                  model: event.payload.model,
+                  category: event.payload.category,
+                  complexity: event.payload.complexity,
+                  source: event.payload.source,
+                },
+              });
+            }
+          }
           break;
 
         case "AssistantToken":
@@ -89,10 +133,19 @@ export const useAgentStore = defineStore("agent", () => {
 
         case "AssistantMessage":
           if (currentSession.value) {
-            currentSession.value.history.push({
-              type: "AssistantMessage",
-              payload: event.payload,
-            });
+            const history = currentSession.value.history;
+            const last = history[history.length - 1];
+            if (
+              !last ||
+              last.type !== "AssistantMessage" ||
+              last.payload.trim() !== event.payload.trim()
+            ) {
+              history.push({
+                type: "AssistantMessage",
+                payload: event.payload,
+                moaModel: currentTurnMoaModel.value || undefined,
+              });
+            }
             currentStreamAssistant.value = "";
           }
           break;
@@ -102,27 +155,21 @@ export const useAgentStore = defineStore("agent", () => {
           break;
 
         case "ToolStart":
+          // Flush any pending streamed assistant text before the tool card
+          if (currentStreamAssistant.value.trim() && currentSession.value) {
+            currentSession.value.history.push({
+              type: "AssistantMessage",
+              payload: currentStreamAssistant.value.trim(),
+              moaModel: currentTurnMoaModel.value || undefined,
+            });
+            currentStreamAssistant.value = "";
+          }
           activeToolCall.value = event.payload;
           streamingToolLogs.value = [];
-          if (currentSession.value) {
-            currentSession.value.history.push({
-              type: "ToolStart",
-              payload: {
-                name: event.payload.name,
-                args: event.payload.args,
-              },
-            });
-          }
           break;
 
         case "ToolLog":
           streamingToolLogs.value.push(event.payload);
-          if (currentSession.value) {
-            currentSession.value.history.push({
-              type: "ToolLog",
-              payload: event.payload,
-            });
-          }
           break;
 
         case "ToolEnd":
@@ -153,6 +200,22 @@ export const useAgentStore = defineStore("agent", () => {
           break;
 
         case "Finished":
+          // Commit any trailing streamed assistant tokens
+          if (currentStreamAssistant.value.trim() && currentSession.value) {
+            const history = currentSession.value.history;
+            const last = history[history.length - 1];
+            if (
+              !last ||
+              last.type !== "AssistantMessage" ||
+              last.payload.trim() !== currentStreamAssistant.value.trim()
+            ) {
+              history.push({
+                type: "AssistantMessage",
+                payload: currentStreamAssistant.value.trim(),
+                moaModel: currentTurnMoaModel.value || undefined,
+              });
+            }
+          }
           isStreaming.value = false;
           statusText.value = "Ready";
           currentStreamAssistant.value = "";
@@ -234,6 +297,71 @@ export const useAgentStore = defineStore("agent", () => {
     }
   }
 
+  async function setWorkspaceDir(path: string) {
+    try {
+      config.value = await invoke<Config>("set_workspace_dir", { path });
+      currentSession.value = await invoke<Session | null>("get_current_session");
+      await refreshGit();
+    } catch (e) {
+      console.error("Failed to switch workspace dir:", e);
+      throw e;
+    }
+  }
+
+  async function resetToHarnessDefaults() {
+    try {
+      config.value = await invoke<Config>("reset_to_harness_defaults");
+      await refreshGit();
+    } catch (e) {
+      console.error("Failed to reset to harness defaults:", e);
+      throw e;
+    }
+  }
+
+  async function setEffort(effort: "low" | "medium" | "high") {
+    try {
+      config.value = await invoke<Config>("set_effort", { effort });
+    } catch (e) {
+      console.error("Failed to set effort:", e);
+      throw e;
+    }
+  }
+
+  async function loadUsage() {
+    try {
+      const stats = await invoke<UsageStats>("get_usage");
+      usageStats.value = stats;
+      return stats;
+    } catch (e) {
+      console.error("Failed to load usage stats:", e);
+      throw e;
+    }
+  }
+
+  async function setMode(mode: AppMode) {
+    try {
+      config.value = await invoke<Config>("set_mode", { mode });
+      if (usageStats.value) {
+        usageStats.value.active_mode = mode;
+      }
+      return config.value;
+    } catch (e) {
+      console.error("Failed to switch mode:", e);
+      throw e;
+    }
+  }
+
+  async function setTheme(theme: ThemeName) {
+    try {
+      config.value = await invoke<Config>("set_theme", { theme });
+      applyTheme(theme);
+      return config.value;
+    } catch (e) {
+      console.error("Failed to switch theme:", e);
+      throw e;
+    }
+  }
+
   return {
     currentSession,
     isStreaming,
@@ -245,6 +373,8 @@ export const useAgentStore = defineStore("agent", () => {
     pendingPermission,
     gitStatus,
     config,
+    usageStats,
+    currentTurnMoaModel,
     init,
     sendPrompt,
     stop,
@@ -253,5 +383,11 @@ export const useAgentStore = defineStore("agent", () => {
     savePreferences,
     loadSession,
     createNewSession,
+    setWorkspaceDir,
+    resetToHarnessDefaults,
+    setEffort,
+    loadUsage,
+    setMode,
+    setTheme,
   };
 });

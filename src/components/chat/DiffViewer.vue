@@ -40,32 +40,32 @@ const parsedLines = computed<DiffLine[]>(() => {
 </script>
 
 <template>
-  <div class="rounded border border-neutral-800 bg-[#0d1117] font-mono text-[11px] overflow-x-auto my-2">
+  <div class="rounded-xl border border-white/[0.08] bg-black/60 font-mono text-[11px] overflow-x-auto my-2">
     <div
       v-for="(line, idx) in parsedLines"
       :key="idx"
-      class="flex leading-5 px-2 select-text"
+      class="flex leading-5 px-2.5 select-text"
       :class="{
-        'bg-emerald-950/40 text-emerald-300': line.type === 'add',
-        'bg-rose-950/40 text-rose-300': line.type === 'del',
-        'text-cyan-400 bg-cyan-950/20 italic py-0.5 border-y border-cyan-900/30': line.type === 'meta',
-        'text-neutral-400 hover:bg-neutral-800/20': line.type === 'ctx',
+        'bg-emerald-500/10 text-emerald-300': line.type === 'add',
+        'bg-rose-500/10 text-rose-300': line.type === 'del',
+        'text-zinc-400 bg-white/[0.02] italic py-0.5 border-y border-white/[0.04]': line.type === 'meta',
+        'text-zinc-400 hover:bg-white/[0.02]': line.type === 'ctx',
       }"
     >
       <!-- Line indicators -->
       <span
         v-if="line.type !== 'meta'"
-        class="w-8 shrink-0 text-right pr-2 text-neutral-400 select-none text-[10px]"
+        class="w-8 shrink-0 text-right pr-2 text-zinc-600 select-none text-[10px]"
       >
         {{ line.oldNum ?? "" }}
       </span>
       <span
         v-if="line.type !== 'meta'"
-        class="w-8 shrink-0 text-right pr-2 text-neutral-400 select-none text-[10px]"
+        class="w-8 shrink-0 text-right pr-2 text-zinc-600 select-none text-[10px]"
       >
         {{ line.newNum ?? "" }}
       </span>
-      <span class="w-4 shrink-0 select-none text-center font-bold">
+      <span class="w-4 shrink-0 select-none text-center font-bold" :class="line.type === 'add' ? 'text-emerald-400' : line.type === 'del' ? 'text-rose-400' : 'text-zinc-600'">
         {{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ' }}
       </span>
       <span class="whitespace-pre flex-1">{{ line.content }}</span>

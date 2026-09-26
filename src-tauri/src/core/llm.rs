@@ -39,7 +39,24 @@ pub struct LlmFunctionCall {
 #[derive(Clone, Debug)]
 pub enum LlmResponse {
     Message(String),
-    ToolCalls(Vec<ToolCall>, Option<String>),
+    ToolCalls {
+        tools: Vec<ToolCall>,
+        thought: Option<String>,
+        content: Option<String>,
+    },
+}
+
+pub fn supports_reasoning_effort(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.contains("o1")
+        || m.contains("o3")
+        || m.contains("o4")
+        || m.contains("reasoning")
+        || m.contains("reasoner")
+        || m.contains("deepseek-r1")
+        || m.contains("claude-3-7")
+        || m.contains("claude-3.7")
+        || m.contains("thinking")
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -190,6 +207,7 @@ impl StreamThinkParser {
 
 pub struct LlmClient {
     client: Client,
+    direct_client: Option<Client>,
     config: Config,
 }
 
@@ -198,16 +216,29 @@ impl LlmClient {
         let mut builder = Client::builder()
             .timeout(std::time::Duration::from_secs(120));
 
-        if let Some(ref proxy_str) = config.proxy {
+        let direct_client = if let Some(ref proxy_str) = config.proxy {
             if let Ok(proxy) = reqwest::Proxy::all(proxy_str) {
                 builder = builder.proxy(proxy);
             }
-        }
+            Some(
+                Client::builder()
+                    .timeout(std::time::Duration::from_secs(120))
+                    .build()
+                    .unwrap_or_default(),
+            )
+        } else {
+            None
+        };
 
         Self {
             client: builder.build().unwrap_or_default(),
+            direct_client,
             config,
         }
+    }
+
+    pub fn set_model(&mut self, model: String) {
+        self.config.model = model;
     }
 
     pub async fn generate_title(&self, prompt: &str) -> Option<String> {
@@ -244,7 +275,20 @@ impl LlmClient {
             req = req.header("Authorization", format!("Bearer {}", self.config.api_key));
         }
 
-        let resp = req.json(&body).send().await.ok()?;
+        let resp = match req.json(&body).send().await {
+            Ok(r) => r,
+            Err(_) => {
+                if let Some(ref direct) = self.direct_client {
+                    let mut d_req = direct.post(&url).header("Content-Type", "application/json");
+                    if !self.config.api_key.is_empty() {
+                        d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
+                    }
+                    d_req.json(&body).send().await.ok()?
+                } else {
+                    return None;
+                }
+            }
+        };
         if !resp.status().is_success() {
             return None;
         }
@@ -292,13 +336,21 @@ impl LlmClient {
         let url = format!("{}/chat/completions", self.config.base_url);
         let tools = get_tool_definitions();
 
-        let body = json!({
+        let mut body = json!({
             "model": self.config.model,
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
             "max_tokens": 8192,
         });
+
+        if supports_reasoning_effort(&self.config.model) {
+            if let Some(ref effort) = self.config.effort {
+                if !effort.is_empty() {
+                    body["reasoning_effort"] = json!(effort.to_lowercase());
+                }
+            }
+        }
 
         let mut attempts = 0;
         let (status, text) = loop {
@@ -312,11 +364,25 @@ impl LlmClient {
                 req = req.header("Authorization", format!("Bearer {}", self.config.api_key));
             }
 
-            let resp = req
-                .json(&body)
-                .send()
-                .await
-                .context(format!("Failed to connect to LLM at {}", url))?;
+            let resp = match req.json(&body).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    if let Some(ref direct) = self.direct_client {
+                        let mut d_req = direct.post(&url).header("Content-Type", "application/json");
+                        if !self.config.api_key.is_empty() {
+                            d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
+                        }
+                        if let Ok(d_resp) = d_req.json(&body).send().await {
+                            crate::logger::log_info("LLM", "Proxy unreachable, successfully fell back to direct connection");
+                            d_resp
+                        } else {
+                            return Err(e).context(format!("Failed to connect to LLM at {}", url));
+                        }
+                    } else {
+                        return Err(e).context(format!("Failed to connect to LLM at {}", url));
+                    }
+                }
+            };
 
             let status = resp.status();
             let text = resp.text().await.context("Failed to read response body")?;
@@ -358,8 +424,11 @@ impl LlmClient {
                         .to_string();
                     tool_calls.push(ToolCall { id, name, arguments });
                 }
-                let thought = content.or(reasoning);
-                return Ok(LlmResponse::ToolCalls(tool_calls, thought));
+                return Ok(LlmResponse::ToolCalls {
+                    tools: tool_calls,
+                    thought: reasoning,
+                    content,
+                });
             }
         }
 
@@ -377,7 +446,7 @@ impl LlmClient {
         let url = format!("{}/chat/completions", self.config.base_url);
         let tools = get_tool_definitions();
 
-        let body = json!({
+        let mut body = json!({
             "model": self.config.model,
             "messages": messages,
             "tools": tools,
@@ -385,6 +454,14 @@ impl LlmClient {
             "stream": true,
             "max_tokens": 8192,
         });
+
+        if supports_reasoning_effort(&self.config.model) {
+            if let Some(ref effort) = self.config.effort {
+                if !effort.is_empty() {
+                    body["reasoning_effort"] = json!(effort.to_lowercase());
+                }
+            }
+        }
 
         let mut attempts = 0;
         let resp = loop {
@@ -409,17 +486,40 @@ impl LlmClient {
             let r = match res {
                 Ok(resp) => resp,
                 Err(e) => {
-                    if attempts < 3 {
-                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                        continue;
+                    if let Some(ref direct) = self.direct_client {
+                        let mut d_req = direct.post(&url).header("Content-Type", "application/json");
+                        if !self.config.api_key.is_empty() {
+                            d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
+                        }
+                        if let Ok(d_resp) = d_req.json(&body).send().await {
+                            crate::logger::log_info("LLM", "Proxy unreachable, successfully fell back to direct connection");
+                            d_resp
+                        } else {
+                            if attempts < 3 {
+                                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                                continue;
+                            }
+                            let proxy_desc = match &self.config.proxy {
+                                Some(p) => format!(" (via proxy {p} and direct fallback failed)"),
+                                None => " (direct connection, no proxy)".to_string(),
+                            };
+                            let err_details = format!("Failed to connect to LLM at {url}{proxy_desc}: {e:#}");
+                            crate::logger::log_error("LLM", &err_details);
+                            return Err(e).context(format!("Failed to connect to LLM at {url}{proxy_desc}"));
+                        }
+                    } else {
+                        if attempts < 3 {
+                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                            continue;
+                        }
+                        let proxy_desc = match &self.config.proxy {
+                            Some(p) => format!(" (via proxy {p})"),
+                            None => " (direct connection, no proxy)".to_string(),
+                        };
+                        let err_details = format!("Failed to connect to LLM at {url}{proxy_desc}: {e:#}");
+                        crate::logger::log_error("LLM", &err_details);
+                        return Err(e).context(format!("Failed to connect to LLM at {url}{proxy_desc}"));
                     }
-                    let proxy_desc = match &self.config.proxy {
-                        Some(p) => format!(" (via proxy {p})"),
-                        None => " (direct connection, no proxy)".to_string(),
-                    };
-                    let err_details = format!("Failed to connect to LLM at {url}{proxy_desc}: {e:#}");
-                    crate::logger::log_error("LLM", &err_details);
-                    return Err(e).context(format!("Failed to connect to LLM at {url}{proxy_desc}"));
                 }
             };
 
@@ -596,12 +696,19 @@ impl LlmClient {
         if !valid_tools.is_empty() {
             let thought = if !accumulated_thought.trim().is_empty() {
                 Some(accumulated_thought)
-            } else if !accumulated_content.trim().is_empty() {
+            } else {
+                None
+            };
+            let content = if !accumulated_content.trim().is_empty() {
                 Some(accumulated_content)
             } else {
                 None
             };
-            return Ok(LlmResponse::ToolCalls(valid_tools, thought));
+            return Ok(LlmResponse::ToolCalls {
+                tools: valid_tools,
+                thought,
+                content,
+            });
         }
 
         if accumulated_content.trim().is_empty() && !accumulated_thought.trim().is_empty() {

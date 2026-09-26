@@ -20,6 +20,13 @@ pub type PermissionRegistry = Arc<Mutex<HashMap<String, oneshot::Sender<Permissi
 #[serde(tag = "type", content = "payload")]
 pub enum AgentEvent {
     StatusUpdate(String),
+    MoaRouting {
+        model: String,
+        category: String,
+        complexity: String,
+        #[serde(default)]
+        source: Option<String>,
+    },
     UserMessage(String),
     AssistantMessage(String),
     AssistantThought(String),
@@ -165,6 +172,11 @@ impl Agent {
         self.messages = messages;
     }
 
+    pub fn set_model(&mut self, model: String) {
+        self.config.model = model.clone();
+        self.llm.set_model(model);
+    }
+
     pub async fn handle_user_input(
         &mut self,
         input: String,
@@ -251,6 +263,7 @@ impl Agent {
                     );
 
                     if is_intermediate {
+                        let _ = event_tx.send(AgentEvent::AssistantMessage(msg.clone())).await;
                         self.messages.push(ChatMessage {
                             role: "assistant".to_string(),
                             content: Some(msg),
@@ -278,16 +291,24 @@ impl Agent {
                     let _ = event_tx.send(AgentEvent::AssistantMessage(msg)).await;
                     break;
                 }
-                LlmResponse::ToolCalls(tool_calls, assistant_text) => {
-                    if let Some(ref text) = assistant_text {
-                        if !text.trim().is_empty() {
+                LlmResponse::ToolCalls { tools, thought, content } => {
+                    if let Some(ref th) = thought {
+                        if !th.trim().is_empty() {
                             let _ = event_tx
-                                .send(AgentEvent::AssistantThought(text.clone()))
+                                .send(AgentEvent::AssistantThought(th.clone()))
                                 .await;
                         }
                     }
 
-                    let llm_tc_vec: Vec<LlmToolCall> = tool_calls
+                    if let Some(ref text) = content {
+                        if !text.trim().is_empty() {
+                            let _ = event_tx
+                                .send(AgentEvent::AssistantMessage(text.clone()))
+                                .await;
+                        }
+                    }
+
+                    let llm_tc_vec: Vec<LlmToolCall> = tools
                         .iter()
                         .map(|tc| LlmToolCall {
                             id: tc.id.clone(),
@@ -301,13 +322,13 @@ impl Agent {
 
                     self.messages.push(ChatMessage {
                         role: "assistant".to_string(),
-                        content: assistant_text,
+                        content,
                         tool_calls: Some(llm_tc_vec),
                         tool_call_id: None,
                         name: None,
                     });
 
-                    for tc in tool_calls {
+                    for tc in tools {
                         if cancel_token.is_cancelled() {
                             let _ = event_tx
                                 .send(AgentEvent::Error("Interrupted by user".to_string()))

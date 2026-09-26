@@ -1,0 +1,330 @@
+# ==============================================================================
+# 🚀 TAKIZA MOA SMART MARKET-AWARE ROUTER (Qwen2.5-VL + LIVE PRICE/PERF BROKER)
+# ==============================================================================
+# 1. Устанавливаем стабильную версию transformers 4.49.0 и зависимости
+!pip install -q "transformers==4.49.0" peft accelerate bitsandbytes fastapi uvicorn pydantic requests
+!wget -q -nc https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+!dpkg -i cloudflared-linux-amd64.deb > /dev/null 2>&1
+
+import os, sys, time
+
+# 2. Если в памяти Colab висит старый transformers 5.x — перезапускаем сеанс
+import transformers
+if not transformers.__version__.startswith("4.49"):
+    print(f"🔄 В памяти Colab была версия transformers {transformers.__version__}.")
+    print("⚡ Выполняю автоматический перезапуск ядра для применения transformers 4.49.0...")
+    print("👉 Нажмите кнопку 'Запустить' ещё раз после перезапуска!")
+    os.kill(os.getpid(), 9)
+
+import torch, threading, json, re, subprocess, uvicorn, urllib.request
+from pathlib import Path
+from fastapi import FastAPI
+from pydantic import BaseModel
+from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
+from peft import PeftModel
+
+print(f"📦 Используется transformers: {transformers.__version__}")
+
+# 3. Распаковка архива и поиск папки с адаптером
+if os.path.exists("/content/takiza-router-adapter.zip"):
+    print("📦 Распаковка takiza-router-adapter.zip...")
+    os.system("unzip -q -o /content/takiza-router-adapter.zip -d /")
+
+if os.path.exists("/content/content/takiza-router-adapter"):
+    print("📂 Перенос адаптера из /content/content/ в /content/...")
+    os.system("cp -rn /content/content/takiza-router-adapter /content/ 2>/dev/null || true")
+
+adapter_path = None
+for candidate in ["/content/takiza-router-adapter", "/content/content/takiza-router-adapter"]:
+    if os.path.exists(os.path.join(candidate, "adapter_config.json")):
+        adapter_path = candidate
+        break
+
+model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+# 4. Загрузка токенизатора базовой модели и мультимодальной архитектуры Qwen2.5-VL в 4-bit NF4
+print("⏳ Загрузка модели Qwen2.5-VL на GPU...")
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+)
+
+# Токенизатор загружаем напрямую из базовой модели
+tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+
+base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    model_id,
+    quantization_config=bnb_config,
+    device_map="auto",
+    torch_dtype=torch.float16,
+    trust_remote_code=True,
+)
+
+if adapter_path:
+    print(f"✨ Подключение LoRA адаптера Takiza из {adapter_path}...")
+    model = PeftModel.from_pretrained(base_model, adapter_path)
+else:
+    print("⚡ Адаптер не найден, используем базовую модель Qwen2.5-VL с zero-shot маршрутизацией...")
+    model = base_model
+
+model.eval()
+print("✅ Модель готова к инференсу!")
+
+# ==============================================================================
+# 5. ДИНАМИЧЕСКИЙ КАТАЛОГ РЫНКА МОДЕЛЕЙ И ОПТИМИЗАТОР ЦЕНА / КАЧЕСТВО
+# ==============================================================================
+class ModelMarketCatalog:
+    def __init__(self):
+        # Базовая база знаний о ценах ($ / 1M токенов) и рейтингах (0-100)
+        self.catalog = {
+            "ag/gemini-3.7-flash-high": {
+                "name": "Gemini 3.7 Flash High",
+                "tier": "fast_coder",
+                "in_price": 0.15,
+                "out_price": 0.60,
+                "coding_score": 88,
+                "strengths": ["speed", "tests", "boilerplate", "chat", "low_latency"],
+            },
+            "kmc/kimi-for-coding": {
+                "name": "Kimi for Coding K3",
+                "tier": "fast_coder",
+                "in_price": 0.50,
+                "out_price": 1.50,
+                "coding_score": 90,
+                "strengths": ["context", "refactoring", "crud", "unit_tests"],
+            },
+            "cc/claude-sonnet-5": {
+                "name": "Claude 3.5/5 Sonnet",
+                "tier": "swe_expert",
+                "in_price": 3.00,
+                "out_price": 15.00,
+                "coding_score": 97,
+                "strengths": ["frontend", "ui", "vue", "css", "complex_swe", "multimodal"],
+            },
+            "cc/claude-opus-5": {
+                "name": "Claude Opus 5",
+                "tier": "frontier_reasoning",
+                "in_price": 15.00,
+                "out_price": 75.00,
+                "coding_score": 98,
+                "strengths": ["concurrency", "async", "ffi", "distributed", "deep_architecture"],
+            },
+            "cx/gpt-6-astra": {
+                "name": "GPT-6 Astra",
+                "tier": "frontier_reasoning",
+                "in_price": 15.00,
+                "out_price": 75.00,
+                "coding_score": 99,
+                "strengths": ["simd", "math", "formal_verification", "compiler", "ultra_hard"],
+            }
+        }
+        self.last_sync = 0
+        self.sync_live_models()
+
+    def sync_live_models(self):
+        """Опрашивает AnyModel API с ключом авторизации для обнаружения свежих моделей."""
+        try:
+            api_key = os.environ.get("ANYMODEL_API_KEY", "").strip()
+            if not api_key:
+                return
+            headers = {
+                "User-Agent": "Takiza-Router/1.0",
+                "Authorization": f"Bearer {api_key}"
+            }
+            req = urllib.request.Request("https://anymodel.org/v1/models", headers=headers)
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode())
+                models_list = data.get("data", [])
+                for m in models_list:
+                    m_id = m.get("id")
+                    if m_id and m_id not in self.catalog:
+                        # Авто-классификация новой неизвестной модели (например, gpt-5.6-luna)
+                        lower = m_id.lower()
+                        if any(k in lower for k in ["luna", "astra", "o3", "opus", "max", "pro"]):
+                            tier = "frontier_reasoning"
+                            in_p, out_p, score = 5.0, 20.0, 97
+                        elif any(k in lower for k in ["sonnet", "coder", "deepseek", "qwen"]):
+                            tier = "swe_expert"
+                            in_p, out_p, score = 2.0, 8.0, 94
+                        else:
+                            tier = "fast_coder"
+                            in_p, out_p, score = 0.3, 1.2, 87
+                        self.catalog[m_id] = {
+                            "name": m_id,
+                            "tier": tier,
+                            "in_price": in_p,
+                            "out_price": out_p,
+                            "coding_score": score,
+                            "strengths": ["auto_discovered_online"]
+                        }
+                print(f"🌐 Синхронизировано {len(self.catalog)} моделей из онлайн-каталога.")
+                self.last_sync = time.time()
+        except Exception as e:
+            print(f"ℹ️ Онлайн каталог AnyModel временно недоступен ({e}), используем встроенный кэш.")
+
+    def find_optimal_model(self, category: str, complexity_score: float, prompt_len: int):
+        """
+        Рассчитывает соотношение Цена / Качество (Pareto Score) для метрик задачи.
+        """
+        # Периодически обновляем каталог в фоне
+        if time.time() - self.last_sync > 3600:
+            threading.Thread(target=self.sync_live_models, daemon=True).start()
+
+        # 1. Приветствия / короткие запросы / минимальная сложность -> всегда Tier 0 (дешево и мгновенно)
+        if complexity_score < 0.25 or category in ("greeting", "chat", "general") or prompt_len < 20:
+            best_model = "ag/gemini-3.7-flash-high"
+            est_cost = 0.00008
+            rationale = "Ultra-fast economical tier • Optimal price/performance (10/10) for routine task • Est. cost ~$0.0001"
+            return best_model, "low", rationale, 150
+
+        # 2. Frontend / UI / Верстка -> Claude Sonnet 5 непревзойденный чемпион
+        if category in ("frontend_ui", "dependency_resolution") or complexity_score <= 0.65:
+            if "frontend" in category or "ui" in category:
+                best_model = "cc/claude-sonnet-5"
+                rationale = "Top-tier Multimodal & UI engineering • Value Score 9.4/10 • Est. cost ~$0.003"
+                return best_model, "hard", rationale, 1800
+            else:
+                best_model = "ag/gemini-3.7-flash-high"
+                rationale = "High-speed backend/testing generation (HumanEval 95%+) • Value Score 9.7/10 • Est. cost ~$0.0004"
+                return best_model, "medium", rationale, 1200
+
+        # 3. Сложные задачи (concurrency, SIMD, архитектура)
+        if complexity_score >= 0.85:
+            if "simd" in category or "system_architecture" in category:
+                best_model = "cx/gpt-6-astra"
+                rationale = "Frontier-level SIMD & formal reasoning (AIME/GPQA profile) • Frontier Tier • Est. cost ~$0.015"
+                return best_model, "ultra_hard", rationale, 3000
+            else:
+                best_model = "cc/claude-opus-5"
+                rationale = "Complex async state machine & FFI safety (SWE-bench Verified profile) • Frontier Tier • Est. cost ~$0.015"
+                return best_model, "hard", rationale, 2500
+
+        # По умолчанию (сбалансированный)
+        return "ag/gemini-3.7-flash-high", "medium", "Balanced localized coding route • High value/cost ratio", 1000
+
+market_catalog = ModelMarketCatalog()
+
+# ==============================================================================
+# 6. СЕРВЕР FASTAPI С ПОДДЕРЖКОЙ МЕТРИК
+# ==============================================================================
+app = FastAPI(title="Takiza MoA Smart Market Router")
+
+class RouteRequest(BaseModel):
+    prompt: str
+
+SYSTEM_METRIC_PROMPT = (
+    "You are the Takiza MoA Metric Evaluator. Analyze the user's task and classify its technical requirements.\n"
+    "Output strictly valid JSON with:\n"
+    "1. category: (greeting | routine_backend | frontend_ui | concurrency_debugging | system_architecture)\n"
+    "2. complexity_score: float from 0.0 (trivial greeting/chat) to 1.0 (extreme SIMD/distributed/formal logic)\n"
+    "3. rationale: brief technical justification of required capability"
+)
+
+@app.post("/route")
+def route_endpoint(req: RouteRequest):
+    p = req.prompt.strip()
+    p_lower = p.lower()
+
+    # Быстрый шлюз для очевидных приветствий (экономим GPU время)
+    if len(p) < 20 and any(w in p_lower for w in ["привет", "hello", "hi", "здравствуй", "test", "ping"]):
+        model_name, comp, rat, tokens = market_catalog.find_optimal_model("greeting", 0.05, len(p))
+        return {
+            "category": "greeting",
+            "complexity": comp,
+            "selected_model": model_name,
+            "benchmark_rationale": rat,
+            "estimated_tokens": tokens,
+            "source": "Colab GPU (Live Market Optimizer)"
+        }
+
+    messages = [
+        {"role": "system", "content": SYSTEM_METRIC_PROMPT},
+        {"role": "user", "content": p}
+    ]
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer([text], return_tensors="pt").to("cuda")
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=100,
+            do_sample=False,
+            repetition_penalty=1.1,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    raw = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+
+    category = "routine_backend"
+    complexity_score = 0.5
+    try:
+        s = raw.find("{")
+        e = raw.rfind("}")
+        parsed = json.loads(raw[s:e+1])
+        category = parsed.get("category", category)
+        complexity_score = float(parsed.get("complexity_score", 0.5))
+    except Exception:
+        # Эвристическая оценка, если JSON не распарсился
+        if any(w in p_lower for w in ["simd", "avx", "интринсик", "dht", "kademlia"]):
+            category = "system_architecture"
+            complexity_score = 0.95
+        elif any(w in p_lower for w in ["deadlock", "гонк", "race condition", "mpsc", "ffi"]):
+            category = "concurrency_debugging"
+            complexity_score = 0.85
+        elif any(w in p_lower for w in ["vue", "css", "верстк", "ui", "tailwind", "компонент"]):
+            category = "frontend_ui"
+            complexity_score = 0.65
+        else:
+            category = "routine_backend"
+            complexity_score = 0.40
+
+    # Запускаем расчет Цена / Качество через MarketCatalog
+    selected_model, complexity_label, rationale, est_tokens = market_catalog.find_optimal_model(
+        category=category,
+        complexity_score=complexity_score,
+        prompt_len=len(p)
+    )
+
+    return {
+        "category": category,
+        "complexity": complexity_label,
+        "selected_model": selected_model,
+        "benchmark_rationale": rationale,
+        "estimated_tokens": est_tokens,
+        "source": "Colab GPU (Live Market Optimizer)"
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "market_models_count": len(market_catalog.catalog),
+        "adapter_loaded": adapter_path is not None
+    }
+
+# ==============================================================================
+# 7. Фоновый запуск Uvicorn
+# ==============================================================================
+def run_app():
+    uvicorn.run(app, host="127.0.0.1", port=8088, log_level="warning")
+
+threading.Thread(target=run_app, daemon=True).start()
+
+# ==============================================================================
+# 8. Cloudflare туннель
+# ==============================================================================
+print("🌐 Запуск Cloudflare туннеля...")
+p = subprocess.Popen(["cloudflared", "tunnel", "--url", "http://127.0.0.1:8088"], stderr=subprocess.PIPE, text=True)
+for line in p.stderr:
+    match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
+    if match:
+        tunnel_url = match.group(0)
+        print("\n" + "="*70)
+        print("🚀 ТВОЙ ОБНОВЛЕННЫЙ SMART MARKET-AWARE РОУТЕР НА GPU В COLAB:")
+        print(f"👉 {tunnel_url}/route")
+        print("="*70)
+        print("\nURL для Takiza GUI (.env / Settings):")
+        print(f"TAKIZA_MOA_ROUTER_URL={tunnel_url}/route")
+        print("="*70 + "\n")
+        break

@@ -4,3 +4,4 @@ pub mod git;
 pub mod llm;
 pub mod session;
 pub mod tools;
+pub mod moa_router;

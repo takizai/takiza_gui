@@ -27,6 +27,18 @@ pub fn run() {
             get_git_info,
             list_files,
             get_file_content,
+            set_workspace_dir,
+            reset_to_harness_defaults,
+            minimize_window,
+            toggle_maximize_window,
+            close_window,
+            is_window_maximized,
+            start_dragging_window,
+            set_webview_zoom,
+            set_effort,
+            set_mode,
+            set_theme,
+            get_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

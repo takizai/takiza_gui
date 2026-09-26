@@ -1,5 +1,13 @@
+export interface MoaRoutingPayload {
+  model: string;
+  category: string;
+  complexity: string;
+  source?: string;
+}
+
 export type AgentEvent =
   | { type: "StatusUpdate"; payload: string }
+  | { type: "MoaRouting"; payload: MoaRoutingPayload }
   | { type: "UserMessage"; payload: string }
   | { type: "AssistantMessage"; payload: string }
   | { type: "AssistantThought"; payload: string }
@@ -14,11 +22,12 @@ export type AgentEvent =
 
 export type HistoryItem =
   | { type: "UserPrompt"; payload: string }
+  | { type: "MoaRouting"; payload: MoaRoutingPayload }
   | { type: "Thought"; payload: string }
   | { type: "ToolStart"; payload: { name: string; args: string } }
   | { type: "ToolLog"; payload: string }
   | { type: "ToolEnd"; payload: { name: string; args: string; result: string; is_error: boolean } }
-  | { type: "AssistantMessage"; payload: string }
+  | { type: "AssistantMessage"; payload: string; moaModel?: string }
   | { type: "Error"; payload: string };
 
 export interface Session {
@@ -38,6 +47,30 @@ export interface SessionMeta {
   message_count: number;
 }
 
+export type ReasoningEffort = "low" | "medium" | "high";
+export type AppMode = "manual" | "moa";
+export type ThemeName = "amber" | "cyberpunk" | "emerald" | "nord" | "monochrome";
+
+export interface CuratedModel {
+  id: string;
+  provider: string;
+  name: string;
+  description: string;
+  is_expensive: boolean;
+}
+
+export interface UsageStats {
+  manual_used: number;
+  manual_limit: number;
+  manual_percentage: number;
+  moa_used: number;
+  moa_limit: number;
+  moa_percentage: number;
+  moa_saved: number;
+  active_mode: string;
+  reset_time_utc: string;
+}
+
 export interface Config {
   api_key: string;
   base_url: string;
@@ -45,6 +78,9 @@ export interface Config {
   workspace_dir: string;
   auto_approve: boolean;
   proxy: string | null;
+  effort?: string | null;
+  mode?: string | null;
+  theme?: string | null;
 }
 
 export interface AppPreferences {
@@ -53,6 +89,9 @@ export interface AppPreferences {
   model?: string;
   auto_approve?: boolean;
   proxy?: string;
+  effort?: string;
+  mode?: string;
+  theme?: string;
 }
 
 export interface GitStatus {

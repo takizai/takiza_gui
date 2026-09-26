@@ -1,0 +1,99 @@
+# ==============================================================================
+# 🚀 АВТОНОМНЫЙ ЗАПУСК TAKIZA MOA ROUTER (ЗАГРУЗКА АДАПТЕРА + CLOUDFLARE ТУННЕЛЬ)
+# ==============================================================================
+!pip install -q fastapi uvicorn pydantic transformers peft accelerate bitsandbytes
+!wget -q -nc https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+!dpkg -i cloudflared-linux-amd64.deb > /dev/null 2>&1
+
+import os, torch, threading, json, re, subprocess, uvicorn
+from pathlib import Path
+from fastapi import FastAPI
+from pydantic import BaseModel
+from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
+from peft import PeftModel
+
+# 1. Проверяем наличие адаптера на диске
+adapter_path = "/content/takiza-router-adapter"
+if not os.path.exists(adapter_path):
+    if os.path.exists("/content/takiza-router-adapter.zip"):
+        print("📦 Распаковка takiza-router-adapter.zip...")
+        !unzip -q -o /content/takiza-router-adapter.zip -d /content/
+    else:
+        print("⚠ Папка с адаптером не найдена. Если у вас есть takiza-router-adapter.zip, загрузите его в файлы Colab.")
+
+# 2. Загружаем мультимодальную базовую модель Qwen2.5-VL-3B в 4-bit и подключаем обученный LoRA-адаптер
+print("⏳ Загрузка базовой модели на GPU...")
+model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+)
+
+tokenizer = AutoTokenizer.from_pretrained(adapter_path if os.path.exists(adapter_path) else model_id, trust_remote_code=True)
+base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    model_id,
+    quantization_config=bnb_config,
+    device_map="auto",
+    dtype=torch.float16,
+    trust_remote_code=True,
+)
+
+print(f"🔗 Подключение обученного адаптера из {adapter_path}...")
+model = PeftModel.from_pretrained(base_model, adapter_path)
+model.eval()
+print("✅ Модель с адаптером успешно загружена в память GPU!")
+
+# 3. Инициализируем FastAPI эндпоинт маршрутизации
+app = FastAPI()
+
+class RouteRequest(BaseModel):
+    prompt: str
+
+SYSTEM_PROMPT = (
+    "You are the Takiza MoA Intelligent Router. Analyze the user's task and input files/context. "
+    "Classify task complexity and select the most cost-effective and capable model: "
+    "ag/gemini-3.7-flash-high, kmc/kimi-for-coding, cc/claude-sonnet-5, cc/claude-opus-5, cx/gpt-5.6-sol, cx/gpt-6-astra. "
+    "Output strictly valid JSON with keys: category, complexity, benchmark_rationale, selected_model, estimated_tokens."
+)
+
+@app.post("/route")
+def route_endpoint(req: RouteRequest):
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": req.prompt}
+    ]
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer([text], return_tensors="pt").to("cuda")
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=120,
+            do_sample=False,
+            repetition_penalty=1.1,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    raw = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+    try:
+        s = raw.find("{")
+        e = raw.rfind("}")
+        return json.loads(raw[s:e+1])
+    except Exception:
+        return {"category": "general", "complexity": "medium", "selected_model": "ag/gemini-3.7-flash-high"}
+
+# 4. Запускаем сервер и туннель Cloudflare
+threading.Thread(target=lambda: uvicorn.run(app, host="127.0.0.1", port=8088, log_level="warning"), daemon=True).start()
+
+print("🌐 Подключение Cloudflare туннеля...")
+p = subprocess.Popen(["cloudflared", "tunnel", "--url", "http://127.0.0.1:8088"], stderr=subprocess.PIPE, text=True)
+for line in p.stderr:
+    if "trycloudflare.com" in line:
+        url = re.search(r'https://[^\s]+\.trycloudflare\.com', line).group(0)
+        print("\n" + "="*60)
+        print(f"🚀 СЕРВЕР МАРШРУТИЗАЦИИ ЗАПУЩЕН!")
+        print(f"👉 Ваша ссылка роутера: {url}/route")
+        print("="*60 + "\n")
+        break

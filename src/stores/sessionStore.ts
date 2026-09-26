@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { SessionMeta } from "../types";
+import type { Session, SessionMeta } from "../types";
 import { useAgentStore } from "./agentStore";
 
 export const useSessionStore = defineStore("sessions", () => {
@@ -27,17 +27,22 @@ export const useSessionStore = defineStore("sessions", () => {
 
   async function newSession() {
     const agentStore = useAgentStore();
-    await agentStore.createNewSession();
+    agentStore.currentSession = null;
+    try {
+      await invoke("new_session");
+    } catch (e) {
+      console.error("Failed to reset agent for new session:", e);
+    }
     await fetchSessions();
   }
 
   async function deleteSession(id: string) {
     try {
-      await invoke("delete_session", { id });
+      const nextSession = await invoke<Session | null>("delete_session", { id });
       await fetchSessions();
       const agentStore = useAgentStore();
       if (agentStore.currentSession?.id === id) {
-        await agentStore.createNewSession();
+        agentStore.currentSession = nextSession;
       }
     } catch (e) {
       console.error("Failed to delete session:", e);
