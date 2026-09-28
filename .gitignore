@@ -37,3 +37,9 @@ src-tauri/target/
 *.sln
 *.sw?
 
+# ML router training scripts, datasets, and LoRA checkpoints
+scripts/
+*.safetensors
+*.pt
+*.pth
+

@@ -185,8 +185,11 @@ export const useAgentStore = defineStore("agent", () => {
               },
             });
           }
-          // Refresh git status after tool modifications
-          refreshGit();
+          // Refresh git status after mutating tool modifications
+          const mutatingTools = ["write_file", "edit_file_lines", "execute_command"];
+          if (mutatingTools.includes(event.payload.name)) {
+            refreshGit();
+          }
           break;
 
         case "Error":

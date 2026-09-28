@@ -88,7 +88,7 @@ const groupedModels = computed(() => {
 
 async function selectModel(modelId: string) {
   try {
-    await agentStore.savePreferences({ model: modelId });
+    await agentStore.savePreferences({ model: modelId, mode: "manual" });
     emit("close");
   } catch (err) {
     console.error("Failed to set model:", err);

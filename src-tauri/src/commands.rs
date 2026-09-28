@@ -289,6 +289,13 @@ pub async fn save_preferences(
         agent.set_messages(msgs);
     }
 
+    {
+        let mut cur_sess = state.current_session.lock().await;
+        if let Some(ref mut sess) = *cur_sess {
+            sess.model = new_cfg.model.clone();
+        }
+    }
+
     Ok(new_cfg)
 }
 
@@ -394,7 +401,11 @@ pub async fn get_usage(state: State<'_, AppState>) -> Result<UsageStats, String>
 pub async fn get_git_info(state: State<'_, AppState>) -> Result<GitStatusDto, String> {
     let ws = state.workspace_dir.lock().await.clone();
     let info = GitInfo::get(&ws);
-    let diff = GitInfo::diff(&ws);
+    let diff = if info.is_dirty {
+        GitInfo::diff(&ws)
+    } else {
+        None
+    };
     Ok(GitStatusDto {
         branch: info.branch,
         is_dirty: info.is_dirty,
@@ -466,9 +477,9 @@ pub async fn set_workspace_dir(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<Config, String> {
-    let raw_path = if path.starts_with("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(&path[2..])
+    let raw_path = if path.starts_with("~/") || path.starts_with("~\\") {
+        if let Some(home) = crate::core::config::dirs_fallback() {
+            home.join(&path[2..])
         } else {
             std::path::PathBuf::from(&path)
         }

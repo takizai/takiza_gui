@@ -55,6 +55,12 @@ fn load_all_env_sources(workspace: &Option<PathBuf>) {
 
 impl Config {
     pub fn config_path() -> Option<PathBuf> {
+        if let Ok(curr) = std::env::current_dir() {
+            let local = curr.join(".takiza").join("config.json");
+            if local.exists() {
+                return Some(local);
+            }
+        }
         dirs_fallback().map(|p| p.join(".config").join("takiza").join("config.json"))
     }
 
@@ -216,8 +222,22 @@ impl Config {
     }
 }
 
-fn dirs_fallback() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(PathBuf::from)
+pub fn dirs_fallback() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| {
+            let drive = std::env::var_os("HOMEDRIVE");
+            let path = std::env::var_os("HOMEPATH");
+            match (drive, path) {
+                (Some(d), Some(p)) => {
+                    let mut b = PathBuf::from(d);
+                    b.push(p);
+                    Some(b)
+                }
+                _ => None,
+            }
+        })
 }
 
 #[cfg(test)]
