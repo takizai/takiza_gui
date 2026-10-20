@@ -554,17 +554,22 @@ mod tests {
 
     #[test]
     fn test_load_inherits_takiza_harness_env() {
-        let config = Config::load(None);
-        // Should successfully resolve non-empty API key and base_url
-        assert!(!config.api_key.is_empty(), "API key should be resolved");
-        assert!(!config.base_url.is_empty(), "Base URL should be resolved");
-        assert!(!config.model.is_empty(), "Model should be resolved");
-        if let Some(profile) = config.active_provider.as_ref().and_then(|id| config.providers.get(id)) {
-            // Compare without putting real credentials into assertion output.
-            assert!(config.api_key == profile_key(profile), "Active profile credential was not inherited");
-            assert_eq!(config.base_url, normalize_base_url(&profile.base_url));
-            assert_eq!(config.model, profile.model);
-        }
+        // Parse a synthetic harness .env without changing process-wide variables
+        // or requiring the developer's credentials on clean CI machines.
+        let source = b"HARNESS_KEY=test-only\nOPENAI_API_KEY=unrelated\nOPENAI_MODEL=unrelated\n";
+        let variables: BTreeMap<String, String> = dotenvy::from_read_iter(&source[..])
+            .collect::<Result<_, _>>().unwrap();
+        let prefs: AppPreferences = serde_json::from_value(serde_json::json!({
+            "active_provider": "harness",
+            "providers": {"harness": {
+                "api_key_env": "HARNESS_KEY", "base_url": "https://provider.test/v1/",
+                "model": "chosen-model", "api_type": "anthropic_messages"
+            }}
+        })).unwrap();
+        assert_eq!(resolve_connection(&prefs, |name| variables.get(name).cloned()),
+            ("test-only".into(), "https://provider.test/v1".into(), "chosen-model".into()));
+        assert_eq!(resolve_connection(&prefs, |_| None),
+            (String::new(), "https://provider.test/v1".into(), "chosen-model".into()));
     }
 }
 
