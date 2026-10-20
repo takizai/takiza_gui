@@ -1,47 +1,29 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { Brain, ChevronDown, ChevronRight } from "lucide-vue-next";
+import { useI18n } from "../../i18n";
+import { computed, ref, useId } from "vue";
+import { Brain, ChevronRight, Loader2 } from "lucide-vue-next";
 
-defineProps<{
-  content: string;
-  isStreaming?: boolean;
-}>();
-
-const isExpanded = ref(true);
-
-function toggle() {
-  isExpanded.value = !isExpanded.value;
-}
+const { tr } = useI18n();
+const props = defineProps<{ content: string; isStreaming?: boolean }>();
+const isExpanded = ref(!!props.isStreaming);
+const contentId = useId();
+const preview = computed(() => props.content.trim().replace(/\s+/g, " ").slice(0, 160));
 </script>
 
 <template>
-  <div
-    v-if="content"
-    class="my-2 rounded-xl border border-white/[0.08] bg-[#101216]/70 overflow-hidden transition-all text-xs"
-  >
-    <!-- Header -->
-    <button
-      @click="toggle"
-      class="w-full flex items-center justify-between px-3.5 py-2 text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03] transition-colors cursor-pointer select-none"
-    >
-      <div class="flex items-center gap-2">
-        <Brain class="w-3.5 h-3.5 text-zinc-400" :class="{ 'animate-pulse text-zinc-200': isStreaming }" />
-        <span class="font-medium text-zinc-300">
-          Цепочка рассуждений
-          <span v-if="isStreaming" class="text-[10px] text-zinc-400 font-mono animate-pulse ml-1">
-            (размышляет...)
-          </span>
-        </span>
-      </div>
-      <component :is="isExpanded ? ChevronDown : ChevronRight" class="w-3.5 h-3.5 text-zinc-500" />
+  <section v-if="content" class="chat-activity" :aria-label='tr("Рассуждения модели")'>
+    <button @click="isExpanded = !isExpanded" :aria-expanded="isExpanded" :aria-controls="contentId" class="activity-row">
+      <Loader2 v-if="isStreaming" class="activity-icon animate-spin" />
+      <Brain v-else class="activity-icon" />
+      <span class="shrink-0" :class="isStreaming ? 'text-zinc-300' : 'text-zinc-400'">{{ isStreaming ? tr("Размышляет") : tr("Рассуждения") }}</span>
+      <span v-if="!isExpanded" class="min-w-0 flex-1 truncate text-zinc-500">{{ preview }}</span>
+      <span v-else class="flex-1" />
+      <ChevronRight class="w-3 h-3 shrink-0 text-zinc-500 transition-transform" :class="{ 'rotate-90': isExpanded }" />
     </button>
-
-    <!-- Body -->
-    <div
-      v-show="isExpanded"
-      class="px-3.5 pb-3 pt-1 text-zinc-400 font-mono text-[11px] leading-relaxed whitespace-pre-wrap border-t border-white/[0.06] bg-black/30"
-    >
-      {{ content }}
-    </div>
-  </div>
+    <Transition name="activity">
+      <div v-if="isExpanded" :id="contentId" class="activity-detail">
+        <div class="reasoning-content max-h-52 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-xs text-zinc-400 leading-6 select-text">{{ content }}</div>
+      </div>
+    </Transition>
+  </section>
 </template>

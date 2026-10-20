@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
+import { setLocale, useI18n } from "./i18n";
 import "highlight.js/styles/tokyo-night-dark.css";
 import "./assets/main.css";
 
@@ -14,4 +15,9 @@ waveform.register();
 
 const app = createApp(App);
 app.use(createPinia());
-app.mount("#app");
+async function mountApp() {
+  try { await setLocale(useI18n().locale.value); }
+  catch { await setLocale("ru"); }
+  app.mount("#app");
+}
+void mountApp();

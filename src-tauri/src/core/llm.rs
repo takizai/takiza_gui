@@ -1,3 +1,6 @@
+#[path = "provider_api.rs"]
+mod provider_api;
+pub use provider_api::ProviderData;
 use crate::core::agent::AgentEvent;
 use crate::core::config::Config;
 use crate::core::tools::{get_tool_definitions, ToolCall};
@@ -11,15 +14,75 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_data: Option<ProviderData>,
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_urls: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<LlmToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+}
+
+fn messages_for_api(messages: &[ChatMessage]) -> Vec<Value> {
+    messages.iter().map(|message| {
+        let mut value = serde_json::to_value(message).expect("ChatMessage serialization");
+        value.as_object_mut().unwrap().remove("image_urls");
+        value.as_object_mut().unwrap().remove("provider_data");
+        if !message.image_urls.is_empty() {
+            let mut content = vec![json!({"type": "text", "text": message.content.as_deref().unwrap_or("")})];
+            content.extend(message.image_urls.iter().map(|url| json!({"type": "image_url", "image_url": {"url": url}})));
+            value["content"] = Value::Array(content);
+        }
+        value
+    }).collect()
+}
+
+fn tools_for_api(definitions: &Value) -> Value {
+    let mut tools = definitions.clone();
+    for tool in tools.as_array_mut().into_iter().flatten() {
+        let Some(function) = tool.get_mut("function").and_then(Value::as_object_mut) else { continue; };
+        let Some(schema) = function.get_mut("parameters").and_then(Value::as_object_mut) else { continue; };
+        // Only relax compositions alongside an explicit object/property schema.
+        // Union-only schemas need a proper conversion rather than dropping them.
+        if schema.get("type").and_then(Value::as_str) != Some("object")
+            || !schema.get("properties").is_some_and(Value::is_object) { continue; }
+        let mut constraints = serde_json::Map::new();
+        for keyword in ["anyOf", "oneOf", "allOf"] {
+            if let Some(value) = schema.remove(keyword) { constraints.insert(keyword.into(), value); }
+        }
+        if !constraints.is_empty() {
+            let description = function.get("description").and_then(Value::as_str).unwrap_or("");
+            function.insert("description".into(), json!(format!(
+                "{description}\nArguments must also satisfy these JSON Schema constraints (validated before execution): {}",
+                Value::Object(constraints))));
+        }
+    }
+    tools
+}
+
+#[cfg(test)]
+mod image_message_tests {
+    use super::*;
+
+    #[test]
+    fn images_use_multimodal_content_and_text_only_sessions_stay_compatible() {
+        let old = json!({"role": "user", "content": "describe"});
+        let mut message: ChatMessage = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(messages_for_api(&[message.clone()]), [old]);
+        message.image_urls.push("data:image/png;base64,aGVsbG8=".into());
+        let stored = serde_json::to_string(&message).unwrap();
+        let restored: ChatMessage = serde_json::from_str(&stored).unwrap();
+        let wire = messages_for_api(&[restored]);
+        assert!(wire[0].get("image_urls").is_none());
+        assert_eq!(wire[0]["content"][0], json!({"type": "text", "text": "describe"}));
+        assert_eq!(wire[0]["content"][1], json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,aGVsbG8="}}));
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,6 +102,7 @@ pub struct LlmFunctionCall {
 #[derive(Clone, Debug)]
 pub enum LlmResponse {
     Message(String),
+    Empty,
     ToolCalls {
         tools: Vec<ToolCall>,
         thought: Option<String>,
@@ -46,24 +110,54 @@ pub enum LlmResponse {
     },
 }
 
-pub fn supports_reasoning_effort(model: &str) -> bool {
-    let m = model.to_lowercase();
-    m.contains("o1")
-        || m.contains("o3")
-        || m.contains("o4")
-        || m.contains("reasoning")
-        || m.contains("reasoner")
-        || m.contains("deepseek-r1")
-        || m.contains("claude-3-7")
-        || m.contains("claude-3.7")
-        || m.contains("thinking")
-}
+
 
 #[derive(Debug, PartialEq, Eq)]
 enum ThinkPhase {
     Initial,
     Thinking,
     Content,
+}
+
+fn append_tool_arguments(buffer: &mut String, chunk: &Value) -> Result<()> {
+    match chunk {
+        Value::Null => {},
+        Value::String(fragment) => buffer.push_str(fragment),
+        Value::Object(_) => {
+            // Some OpenAI-compatible gateways send parsed JSON instead of a string.
+            // Treat it as a complete snapshot, never discard it with as_str().
+            let snapshot = chunk.to_string();
+            anyhow::ensure!(buffer.is_empty() || buffer == &snapshot,
+                "Provider mixed incompatible tool argument formats");
+            *buffer = snapshot;
+        },
+        _ => anyhow::bail!("Provider returned unsupported tool argument format"),
+    }
+    Ok(())
+}
+
+fn checked_tool_call(id: String, name: String, arguments: String) -> Result<ToolCall> {
+    let definitions = get_tool_definitions();
+    let function = definitions.as_array().unwrap().iter()
+        .find(|tool| tool["function"]["name"].as_str() == Some(name.as_str()))
+        .map(|tool| &tool["function"])
+        .ok_or_else(|| anyhow::anyhow!("Provider requested an unknown tool"))?;
+    let schema = &function["parameters"];
+    let required = schema["required"].as_array();
+    let arguments = if arguments.trim().is_empty() {
+        anyhow::ensure!(required.is_none_or(|fields| fields.is_empty()),
+            "Provider returned an incomplete {name} call: missing JSON arguments. This call was not executed; resend the request or choose another model.");
+        "{}".to_string()
+    } else { arguments };
+    let parsed: Value = serde_json::from_str(&arguments)
+        .map_err(|_| anyhow::anyhow!("Provider returned invalid JSON arguments for {name}. This call was not executed; resend the request or choose another model."))?;
+    anyhow::ensure!(parsed.is_object(), "Provider returned non-object arguments for {name}");
+    if let Some(required) = required {
+        for field in required.iter().filter_map(Value::as_str) {
+            anyhow::ensure!(parsed.get(field).is_some(), "Provider returned an incomplete {name} call: missing required argument {field}");
+        }
+    }
+    Ok(ToolCall { id, name, arguments })
 }
 
 pub struct StreamThinkParser {
@@ -209,11 +303,14 @@ pub struct LlmClient {
     client: Client,
     direct_client: Option<Client>,
     config: Config,
+    provider_data: std::sync::Mutex<Option<ProviderData>>,
 }
 
 impl LlmClient {
-    pub fn new(config: Config) -> Self {
+    pub fn new(mut config: Config) -> Self {
+        config.base_url = crate::core::config::normalize_base_url(&config.base_url);
         let mut builder = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(120));
 
         let direct_client = if let Some(ref proxy_str) = config.proxy {
@@ -222,6 +319,7 @@ impl LlmClient {
             }
             Some(
                 Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
                     .timeout(std::time::Duration::from_secs(120))
                     .build()
                     .unwrap_or_default(),
@@ -231,10 +329,19 @@ impl LlmClient {
         };
 
         Self {
+            provider_data: Default::default(),
             client: builder.build().unwrap_or_default(),
             direct_client,
             config,
         }
+    }
+
+    pub(super) fn redact(&self, text: &str) -> String {
+        let mut result = text.to_string();
+        for secret in std::iter::once(&self.config.api_key).chain(self.config.provider_headers.values()) {
+            if !secret.is_empty() { result = result.replace(secret, "[redacted]"); }
+        }
+        result
     }
 
     pub fn set_model(&mut self, model: String) {
@@ -246,6 +353,8 @@ impl LlmClient {
         let prompt_clean = prompt.replace('\n', " ").chars().take(300).collect::<String>();
         let messages = vec![
             ChatMessage {
+                provider_data: None,
+                image_urls: Vec::new(),
                 role: "system".to_string(),
                 content: Some("You generate concise conversation titles. Return ONLY a 3-6 word title summarizing the user request. No quotes, no markdown, no punctuation, same language as user.".to_string()),
                 tool_calls: None,
@@ -253,6 +362,8 @@ impl LlmClient {
                 name: None,
             },
             ChatMessage {
+                provider_data: None,
+                image_urls: Vec::new(),
                 role: "user".to_string(),
                 content: Some(prompt_clean),
                 tool_calls: None,
@@ -261,28 +372,28 @@ impl LlmClient {
             }
         ];
 
+        if self.config.api_type != crate::core::providers::ApiType::ChatCompletions {
+            return clean_title(&self.native_title(&messages).await?);
+        }
+
         let body = json!({
             "model": self.config.model,
-            "messages": messages,
-            "max_tokens": 200,
-            "temperature": 0.4,
+            "messages": messages_for_api(&messages),
+            "max_tokens": 4096,
+            "stream": false,
         });
 
         let mut req = self.client.post(&url)
             .header("Content-Type", "application/json");
 
-        if !self.config.api_key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", self.config.api_key));
-        }
+        req = self.authorize(req);
 
         let resp = match req.json(&body).send().await {
             Ok(r) => r,
             Err(_) => {
                 if let Some(ref direct) = self.direct_client {
                     let mut d_req = direct.post(&url).header("Content-Type", "application/json");
-                    if !self.config.api_key.is_empty() {
-                        d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
-                    }
+                    d_req = self.authorize(d_req);
                     d_req.json(&body).send().await.ok()?
                 } else {
                     return None;
@@ -303,54 +414,27 @@ impl LlmClient {
             choice_msg.get("reasoning").and_then(|r| r.as_str()).unwrap_or("")
         };
 
-        let mut clean = raw.trim().to_string();
-        if let Some(pos) = clean.rfind("</think>") {
-            clean = clean[pos + 8..].trim().to_string();
-        } else if let Some(pos) = clean.rfind("</thought>") {
-            clean = clean[pos + 10..].trim().to_string();
-        } else if let Some(pos) = clean.rfind("</reasoning>") {
-            clean = clean[pos + 12..].trim().to_string();
-        }
-
-        let first_line = clean
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or("")
-            .trim()
-            .trim_matches('"')
-            .trim_matches('\'')
-            .trim_matches('*')
-            .trim_matches('`')
-            .trim_end_matches('.')
-            .to_string();
-
-        if first_line.is_empty() {
-            None
-        } else {
-            Some(first_line)
-        }
+        clean_title(raw)
     }
 
     #[allow(dead_code)]
     pub async fn chat_step(&self, messages: &[ChatMessage]) -> Result<LlmResponse> {
+        *self.provider_data.lock().unwrap() = None;
+        if self.config.api_type != crate::core::providers::ApiType::ChatCompletions {
+            return self.native_chat(messages, false, None, &CancellationToken::new()).await;
+        }
         let url = format!("{}/chat/completions", self.config.base_url);
         let tools = get_tool_definitions();
 
         let mut body = json!({
             "model": self.config.model,
-            "messages": messages,
+            "messages": messages_for_api(messages),
             "tools": tools,
             "tool_choice": "auto",
             "max_tokens": 8192,
         });
 
-        if supports_reasoning_effort(&self.config.model) {
-            if let Some(ref effort) = self.config.effort {
-                if !effort.is_empty() {
-                    body["reasoning_effort"] = json!(effort.to_lowercase());
-                }
-            }
-        }
+        crate::core::reasoning::apply(&mut body, self.config.api_type.as_str(), &self.config.reasoning_levels(), self.config.effort.as_deref());
 
         let mut attempts = 0;
         let (status, text) = loop {
@@ -360,18 +444,14 @@ impl LlmClient {
                 .post(&url)
                 .header("Content-Type", "application/json");
 
-            if !self.config.api_key.is_empty() {
-                req = req.header("Authorization", format!("Bearer {}", self.config.api_key));
-            }
+            req = self.authorize(req);
 
             let resp = match req.json(&body).send().await {
                 Ok(r) => r,
                 Err(e) => {
                     if let Some(ref direct) = self.direct_client {
                         let mut d_req = direct.post(&url).header("Content-Type", "application/json");
-                        if !self.config.api_key.is_empty() {
-                            d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
-                        }
+                        d_req = self.authorize(d_req);
                         if let Ok(d_resp) = d_req.json(&body).send().await {
                             crate::logger::log_info("LLM", "Proxy unreachable, successfully fell back to direct connection");
                             d_resp
@@ -386,6 +466,7 @@ impl LlmClient {
 
             let status = resp.status();
             let text = resp.text().await.context("Failed to read response body")?;
+            let text = self.redact(&text);
 
             if status.as_u16() == 429 && attempts < 4 {
                 tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
@@ -418,11 +499,9 @@ impl LlmClient {
                 for tc in tool_calls_val {
                     let id = tc["id"].as_str().unwrap_or("").to_string();
                     let name = tc["function"]["name"].as_str().unwrap_or("").to_string();
-                    let arguments = tc["function"]["arguments"]
-                        .as_str()
-                        .unwrap_or("{}")
-                        .to_string();
-                    tool_calls.push(ToolCall { id, name, arguments });
+                    let mut arguments = String::new();
+                    append_tool_arguments(&mut arguments, &tc["function"]["arguments"])?;
+                    tool_calls.push(checked_tool_call(id, name, arguments)?);
                 }
                 return Ok(LlmResponse::ToolCalls {
                     tools: tool_calls,
@@ -432,9 +511,8 @@ impl LlmClient {
             }
         }
 
-        Ok(LlmResponse::Message(
-            content.unwrap_or_else(|| "(Empty response)".to_string()),
-        ))
+        let content = content.unwrap_or_default();
+        Ok(if content.trim().is_empty() { LlmResponse::Empty } else { LlmResponse::Message(content) })
     }
 
     pub async fn chat_step_stream(
@@ -443,25 +521,23 @@ impl LlmClient {
         event_tx: &mpsc::Sender<AgentEvent>,
         cancel_token: &CancellationToken,
     ) -> Result<LlmResponse> {
+        *self.provider_data.lock().unwrap() = None;
+        if self.config.api_type != crate::core::providers::ApiType::ChatCompletions {
+            return self.native_chat(messages, true, Some(event_tx), cancel_token).await;
+        }
         let url = format!("{}/chat/completions", self.config.base_url);
         let tools = get_tool_definitions();
 
         let mut body = json!({
             "model": self.config.model,
-            "messages": messages,
+            "messages": messages_for_api(messages),
             "tools": tools,
             "tool_choice": "auto",
             "stream": true,
             "max_tokens": 8192,
         });
 
-        if supports_reasoning_effort(&self.config.model) {
-            if let Some(ref effort) = self.config.effort {
-                if !effort.is_empty() {
-                    body["reasoning_effort"] = json!(effort.to_lowercase());
-                }
-            }
-        }
+        crate::core::reasoning::apply(&mut body, self.config.api_type.as_str(), &self.config.reasoning_levels(), self.config.effort.as_deref());
 
         let mut attempts = 0;
         let resp = loop {
@@ -474,9 +550,7 @@ impl LlmClient {
                 .post(&url)
                 .header("Content-Type", "application/json");
 
-            if !self.config.api_key.is_empty() {
-                req = req.header("Authorization", format!("Bearer {}", self.config.api_key));
-            }
+            req = self.authorize(req);
 
             let res = req
                 .json(&body)
@@ -488,9 +562,7 @@ impl LlmClient {
                 Err(e) => {
                     if let Some(ref direct) = self.direct_client {
                         let mut d_req = direct.post(&url).header("Content-Type", "application/json");
-                        if !self.config.api_key.is_empty() {
-                            d_req = d_req.header("Authorization", format!("Bearer {}", self.config.api_key));
-                        }
+                        d_req = self.authorize(d_req);
                         if let Ok(d_resp) = d_req.json(&body).send().await {
                             crate::logger::log_info("LLM", "Proxy unreachable, successfully fell back to direct connection");
                             d_resp
@@ -530,7 +602,7 @@ impl LlmClient {
             }
 
             if !status.is_success() {
-                let err_text = r.text().await.unwrap_or_default();
+                let err_text = self.redact(&r.text().await.unwrap_or_default());
                 let err_details = format!("API Error (status {status}) from {url}: {err_text}");
                 crate::logger::log_error("LLM", &err_details);
                 anyhow::bail!("API Error (status {}): {}", status, err_text);
@@ -551,7 +623,7 @@ impl LlmClient {
         let mut accumulated_thought = String::new();
 
         let mut byte_stream = resp.bytes_stream();
-        let mut sse_buffer = String::new();
+        let mut sse_buffer = Vec::<u8>::new();
         let mut done_stream = false;
 
         while !done_stream {
@@ -563,18 +635,22 @@ impl LlmClient {
             };
 
             let chunk_bytes = match chunk_opt {
-                Some(Ok(bytes)) => bytes,
+                Some(Ok(bytes)) => Some(bytes),
                 Some(Err(e)) => {
                     return Err(e).context("Error reading stream chunk from LLM");
                 }
-                None => break, // EOF
+                None => {
+                    if sse_buffer.is_empty() { break; }
+                    sse_buffer.push(b'\n');
+                    done_stream = true;
+                    None
+                }
             };
 
-            let text = String::from_utf8_lossy(&chunk_bytes);
-            sse_buffer.push_str(&text);
+            if let Some(bytes) = chunk_bytes.as_ref() { sse_buffer.extend_from_slice(bytes); }
 
-            while let Some(newline_pos) = sse_buffer.find('\n') {
-                let line = sse_buffer[..newline_pos].trim_end_matches('\r').to_string();
+            while let Some(newline_pos) = sse_buffer.iter().position(|byte| *byte == b'\n') {
+                let line = String::from_utf8_lossy(&sse_buffer[..newline_pos]).trim_end_matches('\r').to_string();
                 sse_buffer.drain(..=newline_pos);
 
                 let trimmed = line.trim();
@@ -629,8 +705,17 @@ impl LlmClient {
 
                     // 3. Check tool_calls delta
                     if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                        for tc in tool_calls_arr {
-                            let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+                        for (position, tc) in tool_calls_arr.iter().enumerate() {
+                            let idx = if let Some(index) = tc.get("index").and_then(Value::as_u64) {
+                                anyhow::ensure!(index < 128, "Provider returned an invalid tool-call index");
+                                index as usize
+                            } else if let Some(id) = tc.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+                                accum_tools.iter().position(|tool| tool.id == id).unwrap_or(accum_tools.len())
+                            } else if tool_calls_arr.len() > 1 { position }
+                            else {
+                                anyhow::ensure!(accum_tools.len() <= 1, "Provider omitted the index for an ambiguous tool-call fragment");
+                                0
+                            };
                             while accum_tools.len() <= idx {
                                 accum_tools.push(InFlightTool {
                                     id: String::new(),
@@ -657,8 +742,8 @@ impl LlmClient {
                                         }
                                     }
                                 }
-                                if let Some(args) = func.get("arguments").and_then(|s| s.as_str()) {
-                                    accum_tools[idx].arguments.push_str(args);
+                                if let Some(args) = func.get("arguments") {
+                                    append_tool_arguments(&mut accum_tools[idx].arguments, args)?;
                                 }
                             }
                         }
@@ -686,12 +771,11 @@ impl LlmClient {
             .into_iter()
             .filter(|t| !t.name.trim().is_empty())
             .enumerate()
-            .map(|(i, t)| ToolCall {
-                id: if t.id.trim().is_empty() { format!("call_{}", i) } else { t.id },
-                name: t.name,
-                arguments: t.arguments,
-            })
-            .collect();
+            .map(|(i, t)| checked_tool_call(
+                if t.id.trim().is_empty() { format!("call_{}", i) } else { t.id },
+                t.name, t.arguments,
+            ))
+            .collect::<Result<Vec<_>>>()?;
 
         if !valid_tools.is_empty() {
             let thought = if !accumulated_thought.trim().is_empty() {
@@ -715,17 +799,66 @@ impl LlmClient {
             accumulated_content = accumulated_thought;
         }
 
-        if accumulated_content.trim().is_empty() {
-            accumulated_content = "(Empty response)".to_string();
+        Ok(if accumulated_content.trim().is_empty() { LlmResponse::Empty } else { LlmResponse::Message(accumulated_content) })
+    }
+}
+
+fn clean_title(raw: &str) -> Option<String> {
+        let mut clean = raw.trim().to_string();
+        if let Some(pos) = clean.rfind("</think>") {
+            clean = clean[pos + 8..].trim().to_string();
+        } else if let Some(pos) = clean.rfind("</thought>") {
+            clean = clean[pos + 10..].trim().to_string();
+        } else if let Some(pos) = clean.rfind("</reasoning>") {
+            clean = clean[pos + 12..].trim().to_string();
         }
 
-        Ok(LlmResponse::Message(accumulated_content))
-    }
+        let first_line = clean
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("")
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .trim_matches('*')
+            .trim_matches('`')
+            .trim_end_matches('.')
+            .to_string();
+
+        if first_line.is_empty() {
+            None
+        } else {
+            Some(first_line)
+        }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parsed_object_arguments_are_preserved_and_required_arguments_are_checked() {
+        let mut arguments = String::new();
+        append_tool_arguments(&mut arguments, &json!({"query":"Сибирь новости"})).unwrap();
+        let tool = checked_tool_call("call".into(), "web_search".into(), arguments).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&tool.arguments).unwrap()["query"], "Сибирь новости");
+        assert!(checked_tool_call("call".into(), "web_search".into(), "".into()).unwrap_err().to_string().contains("missing JSON arguments"));
+        assert!(checked_tool_call("call".into(), "web_search".into(), "{}".into()).is_err());
+        assert!(checked_tool_call("call".into(), "web_search".into(), "{\"query\":".into()).is_err());
+        assert!(checked_tool_call("call".into(), "web_search".into(), "[]".into()).is_err());
+        assert_eq!(checked_tool_call("call".into(), "list_dir".into(), "".into()).unwrap().arguments, "{}");
+    }
+
+    #[test]
+    fn fragmented_string_arguments_still_assemble_without_data_loss() {
+        let mut arguments = String::new();
+        for fragment in ["{\"query\":", "\"news", " news\"}"] {
+            append_tool_arguments(&mut arguments, &Value::String(fragment.into())).unwrap();
+        }
+        let tool = checked_tool_call("call".into(), "web_search".into(), arguments).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&tool.arguments).unwrap()["query"], "news news");
+        assert!(append_tool_arguments(&mut String::new(), &json!(["invalid"])).is_err());
+    }
 
     #[test]
     fn test_stream_think_parser_normal() {

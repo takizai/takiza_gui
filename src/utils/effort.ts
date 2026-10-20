@@ -1,25 +1,30 @@
-/**
- * Helper to determine whether an LLM model supports the reasoning effort parameter
- * (e.g. OpenAI o1/o3, Claude 3.7 Sonnet Extended Thinking, DeepSeek R1, Gemini 2.5 thinking, etc.)
- */
-export function supportsReasoningEffort(model?: string | null): boolean {
-  if (!model) return false;
-  const m = model.toLowerCase();
-  return (
-    m.includes("o1") ||
-    m.includes("o3") ||
-    m.includes("o4") ||
-    m.includes("reasoning") ||
-    m.includes("reasoner") ||
-    m.includes("deepseek-r1") ||
-    m.includes("claude-3-7") ||
-    m.includes("claude-3.7") ||
-    m.includes("thinking")
-  );
-}
+import rules from './reasoning-models.json';
+import type { ApiType, ProviderModel, ReasoningEffort } from '../types';
+const valid = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
-export const REASONING_EFFORT_OPTIONS = [
-  { value: "low", label: "Low", desc: "Быстрый ответ, минимальное время размышления" },
-  { value: "medium", label: "Med", desc: "Сбалансированное рассуждение (по умолчанию)" },
-  { value: "high", label: "High", desc: "Глубокий анализ и максимальное рассуждение" },
-] as const;
+/** Explicit provider capability data wins. Thinking support alone is insufficient. */
+export function reasoningEfforts(model: string, _api: ApiType = 'chat_completions', metadata?: ProviderModel): ReasoningEffort[] {
+  const reported = metadata?.reasoning_effort ?? metadata?.capabilities?.effort;
+  if (reported && typeof reported === 'object') {
+    if (reported.supported === false) return [];
+    if (Array.isArray(reported.levels)) return valid.filter(level => reported.levels!.includes(level)) as ReasoningEffort[];
+    const perLevel = valid.filter(level => {
+      const support = reported[level];
+      return support === true || (typeof support === 'object' && support !== null && !Array.isArray(support) && support.supported === true);
+    });
+    if (valid.some(level => level in reported)) return perLevel as ReasoningEffort[];
+  }
+  const capability = metadata?.reasoning_efforts ?? metadata?.capabilities?.reasoning_effort;
+  if (Array.isArray(capability)) return valid.filter(level => capability.includes(level)) as ReasoningEffort[];
+  if (capability === false) return [];
+  if (metadata?.supported_parameters && !metadata.supported_parameters.some(p => ['reasoning_effort', 'reasoning.effort', 'output_config.effort'].includes(p))) return [];
+  const explicitlySupported = capability === true || metadata?.supported_parameters?.some(p => ['reasoning_effort', 'reasoning.effort', 'output_config.effort'].includes(p));
+  let name = model.toLowerCase().split('/').pop()!;
+  if (name.startsWith('claude-')) name = name.replace(/\./g, '-');
+  const match = rules.filter(rule => (name === rule.id || /^-\d{4}-?\d{2}-?\d{2}$/.test(name.slice(rule.id.length)) && name.startsWith(rule.id)))
+    .sort((a,b) => b.id.length - a.id.length)[0];
+  return (match?.levels || (explicitlySupported ? ['low', 'medium', 'high'] : [])) as ReasoningEffort[];
+}
+export function supportsReasoningEffort(model?: string | null, api: ApiType = 'chat_completions'): boolean {
+  return !!model && reasoningEfforts(model, api).length > 1;
+}

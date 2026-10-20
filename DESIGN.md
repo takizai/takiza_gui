@@ -1,95 +1,174 @@
-# UI Design Specification: Takiza GUI (Rebuild)
+# Takiza GUI — минимальный интерфейс
 
-## 1. Overview & Brand Identity
-Takiza GUI is a modern, high-performance desktop interface for the Takiza autonomous Rust agent. It embodies the aesthetics of **Linear, Vercel, and Claude**:
-- **Palette**: Deep Obsidian Canvas (`#090a0c`), Charcoal Surface (`#121316`), and crisp Silver-White typography and borders (`rgba(255, 255, 255, 0.08)` to `0.15`).
-- **Signature Emblem**: Fluid ribbon geometry featuring pure white, platinum-silver, and warm amber loops.
-- **Tone**: Editorial, focused, distraction-free, engineered for developers and technical creators.
+Главный экран: спокойный однотонный фон, компактная строка заголовка,
+диалог шириной до 768 px и поле ввода. На старте заголовок, подсказка
+и поле образуют один центральный блок шириной до 672 px. После начала
+диалога тот же экземпляр поля закрепляется снизу, сохраняя черновик. Без свечения, фоновых градиентов
+и размытия в постоянно видимых элементах.
 
----
+- Панель истории скрыта при запуске; открывается кнопкой в заголовке.
+  На узких экранах появляется поверх диалога с кнопкой закрытия.
+- Заголовок содержит название диалога, меню действий и управление окном.
+  Разрешения, скиллы и настройки доступны из меню.
+  Режимы MoA недоступны до появления входа и помечены «В разработке».
+  Usage содержит сведения о выбранном провайдере, адресе API и модели.
+  Адрес API отображается как текст: адрес кабинета и маршрут статистики неизвестны.
+- Модель выбирается только под полем ввода; глубина рассуждений — в настройках.
+  Подпись содержит имя профиля и полный ID модели.
+  Существующие профили providers/active_provider наследуются из Takiza вместе
+  с ключом, URL, моделью и каталогом; изменения сохраняются в выбранный профиль.
+  Список моделей берётся из каталога профиля или /models выбранного подключения. В настройках
+  загрузка запускается кнопкой; при смене провайдера старый API-ключ очищается.
+  Отсутствие API каталога допускает ручной ввод ID без чужих рекомендаций.
+- Поле ввода: одна строка с автоувеличением и круглая кнопка отправки,
+  фон white/3.5%, тонкая граница, без backdrop-filter.
+- Стартовый экран: один заголовок и короткая подсказка, без карточек задач.
+- История: одна строка на диалог, поиск и компактный выбор проекта.
+- Рассуждения свернуты по умолчанию; результаты инструментов сохраняют раскрытие.
+- Палитра использует существующие темы. Поверхности #111318,
+  границы white/8%, основной текст zinc-100, вторичный zinc-400.
+- Клавиатурный фокус всегда виден; действия имеют текст или aria-label.
+- Код модальных окон входит в основной бандл; компоненты монтируются при
+  первом открытии и сохраняются для анимации закрытия. Открытие не зависит
+  от дополнительного запроса JS-модуля. Потоковый Markdown обновляется
+  не чаще одного раза в 80 ms; прокрутка объединяется через animation frame.
+  Старые сообщения используют content-visibility для пропуска отрисовки вне экрана.
+- При reduced-motion декоративная анимация отключается.
 
-## 2. Spatial Composition & Layout Architecture
+## Общие оверлеи
 
-### A. App Shell
-- **Container**: Full-height application window (`h-screen overflow-hidden flex bg-[#090a0c] text-zinc-200 antialiased`).
-- **Collapsible Sidebar (Left)**:
-  - Width: `w-64` (expanded) or `w-0` / `hidden` (collapsed).
-  - Header: Takiza brand lockup with 28px logo, app version, and collapse toggle button.
-  - Action button: "+ New Session" with subtle silver border (`hover:border-white/20 active:scale-[0.98]`).
-  - Session list: Scrollable history grouped by recency with delete/select interactions.
-  - Footer: Model switcher indicator, connection status pill, and Settings gear icon.
-- **Top Header Bar**:
-  - Height: `h-12` (`border-b border-white/[0.06] bg-[#0d0e11]/80 backdrop-blur-md`).
-  - Breadcrumb: Session title / active project path.
-  - Right controls: Active provider/model badge, git branch indicator, sidebar toggle button.
-- **Central Canvas (Main)**:
-  - Max reading width: `max-w-4xl mx-auto w-full px-4 sm:px-6`.
-  - Independent scroll container with custom slim scrollbar.
-- **Floating Input Dock (Bottom)**:
-  - Centered floating dock (`max-w-4xl mx-auto pb-5 px-4`).
-  - Auto-resizing textarea with clean border (`rounded-2xl bg-[#14161b]/90 border border-white/10 shadow-2xl backdrop-blur-xl focus-within:border-white/25`).
-  - Bottom action bar: Model badge, hotkey hint `Ctrl+Enter`, and Send / Stop button.
+Модальные окна используют BaseModal: непрозрачная поверхность #111318,
+радиус 12 px, граница white/10%, затемнение black/55% без размытия.
+Максимальная высота — высота окна минус 32 px. Заголовок и кнопки остаются
+видимыми, прокручивается содержимое. Появление: opacity и translateY(6px)
+за 160 ms, закрытие за 120 ms; reduced-motion отключает движение.
+Фокус переходит в окно, Tab остаётся внутри, Escape закрывает только верхнее
+окно, если это допускается его сценарием. После закрытия фокус возвращается.
 
----
+Выбор модели: панель шириной 280 px, высотой до 300 px, перенесённая в body.
+Расположение рассчитывается относительно кнопки и границ viewport; при
+нехватке места направление меняется. Прокручивается только список, строки
+компактные, ID не дублируется, когда совпадает с названием. Появление и
+закрытие через opacity/transform, без анимации геометрии и фильтров.
 
-## 3. Brand & Logo Touchpoints
-1. **Sidebar Brand Lockup**:
-   - `src/assets/logo.png` rendered at `h-7 w-7 object-contain` alongside stylized "TAKIZA" typography.
-2. **Hero Empty State (Welcome Canvas)**:
-   - Centered 96x96px emblem with soft ambient glow (`shadow-[0_0_50px_rgba(255,255,255,0.06)]`).
-   - Title: "What do you want to build today?"
-   - Quick action prompt cards (e.g., "Analyze current repository", "Run tests and inspect failures", "Refactor module").
-3. **Live Activity Indicator**:
-   - When the agent is thinking or streaming tokens, a subtle breathing glow / micro-pulse effect appears next to the logo.
+## Лента диалога
 
----
+Единая колонка до 768 px. Пользователь: мягкая правая плашка без аватара и
+тени; Takiza: текст на фоне холста с маленькой подписью автора. Управление
+сообщением доступно по наведению, фокусу и на сенсорном экране.
 
-## 4. Message Flow & Cards
+Инструменты и reasoning образуют компактный журнал работы: слева маленькая
+иконка, рядом действие/название, краткий аргумент, справа статус и раскрытие.
+Успешные инструменты по умолчанию занимают одну строку. Раскрытие показывает
+параметры, вывод или diff и копирование результата. Ошибки имеют явную подпись
+и короткий видимый фрагмент. Длинные результаты прокручиваются внутри блока.
+Активные рассуждения раскрыты, завершённые имеют однострочное превью и могут
+быть открыты снова. Показывается только текст reasoning, полученный от модели.
 
-### User Message
-- Compact, aligned to the right or full-width pill with distinct subtle surface (`bg-[#181a20] border border-white/10 text-zinc-100 rounded-2xl px-5 py-3.5`).
+Живые и сохранённые сообщения используют одинаковую визуальную структуру.
+Reasoning фиксируется перед ответом/инструментом; потоковый Markdown обновляется
+пакетами. Свёрнутые результаты не создают DOM для длинного вывода и diff.
 
-### Assistant Message
-- Full-width, unboxed, airy typography (`prose-takiza text-zinc-200 leading-relaxed`).
-- Header with miniature Takiza emblem and timestamp.
-- Actions: Copy message markdown, rerun prompt.
+Действия с сообщениями расположены под текстом: у Takiza — копирование и
+перегенерация, у пользователя — переделка и перегенерация. Повторная генерация
+сохраняет существующий user-turn и не создаёт UserMessage. Последующая история
+заменяется с сохранением точки возврата; вложения редактируемого сообщения
+сохраняются. Во время работы изменяющие действия недоступны.
+Потоковый ответ отображается через короткий буфер requestAnimationFrame,
+Markdown обновляется раз в 32 ms. Завершение не задерживается; reduced-motion
+отключает постепенное раскрытие текста.
 
-### Thinking Accordion (`ThinkingBlock.vue`)
-- Collapsible container with muted silver icon and elapsed timer (`0.8s`).
-- Delicate border (`border-white/[0.08] bg-[#111215]/60 rounded-xl`).
-- Expanding body showing chain-of-thought in dimmed text (`text-zinc-400 font-mono text-xs leading-relaxed`).
+## Языки, темы и библиотека скиллов
 
-### Tool Execution Card (`ToolCallCard.vue`)
-- Terminal-inspired card with status pill:
-  - Running: Yellow/Amber pulse badge.
-  - Completed: Emerald badge with exit code.
-  - Failed: Rose badge.
-- Header: Tool name (e.g., `run_command`, `write_to_file`) with parameters preview.
-- Body: Monospace terminal block with stdout/stderr syntax highlighting and one-click copy button.
+Интерфейс поддерживает ru, en и zh (упрощённый китайский), хранит язык в
+общем конфиге Takiza и переключается без перезапуска. Локализуются подписи,
+формы, меню, статусы и подсказки команд; пользовательский текст, ответы модели,
+reasoning, вывод инструментов и документация скиллов не переводятся.
+Каталог переводов загружается отдельным модулем при выборе английского или
+китайского языка. Метка lang обновляется на корневом элементе.
 
----
+GUI содержит десять обычных тем TUI: Amber, Cyberpunk, Emerald, Nord,
+Monochrome, Dracula, Rose, Ocean, Sakura, Solarized. Настройки сохраняют
+названия тем в формате TUI и не меняют профили провайдеров.
 
-## 5. Modals & Settings Dialog (`SettingsModal.vue`)
-- Backdrop: `bg-black/70 backdrop-blur-sm`.
-- Container: `rounded-2xl border border-white/10 bg-[#121418] shadow-2xl max-w-2xl w-full`.
-- Tabs:
-  1. **General**: Working directory, theme, auto-scroll preferences.
-  2. **Model & API Keys**: Provider selector (OpenAI / Anthropic / Gemini / DeepSeek / Ollama), API key inputs with reveal toggles, model selection.
-  3. **Inherited Settings**: Visual confirmation of settings sourced from `~/.config/takiza/config.json` and `.env`.
-- Clean footer with Cancel and Save buttons.
+Библиотека скиллов: общая модалка до 800 px, слева список шириной 240 px,
+справа документация с отдельной прокруткой и действиями в закреплённом футере.
+До 640 px отображается либо список, либо документ с кнопкой возврата.
+Поиск, пустое состояние, загрузка, ошибка и повторная попытка имеют явные
+состояния. Запоздавшие ответы не заменяют содержимое выбранного скилла.
 
----
+## Вложения в сообщениях
 
-## 6. Design Tokens & Classes
+В поле ввода — тихая кнопка-скрепка размером 32 px. Системный выбор файлов
+поддерживает несколько файлов; карточки имени и размера находятся над полем,
+каждое вложение можно убрать. При импорте скрепка показывает индикатор.
+Текстовые UTF-8 файлы и исходники до 1 MiB читаются агентом через read_file.
+Изображения PNG/JPEG/GIF/WebP до 10 MiB доступны только при явной поддержке
+image input в метаданных выбранной модели выбранного провайдера. Названия
+и алиасы моделей не служат доказательством поддержки. PDF и офисные бинарные
+форматы не предлагаются. Без выбранной модели кнопка недоступна.
+Смена модели сохраняет черновик и вложения; неподдерживаемые изображения
+блокируют отправку с объяснением. Маркеры файлов сохраняются в истории,
+при редактировании и перегенерации, в чате отображаются как компактные имена.
 
-| Token | Class / Value | Description |
-| :--- | :--- | :--- |
-| **Canvas** | `bg-[#090a0c]` | Primary deep black background |
-| **Surface** | `bg-[#121316]` | Card and sidebar background |
-| **Elevated** | `bg-[#181a20]` | Popovers, inputs, active items |
-| **Border Subtly** | `border-white/[0.07]` | Hairline panel dividers |
-| **Border Active** | `border-white/20` | Focus, hover states |
-| **Text Primary** | `text-zinc-100` | Headings, primary content |
-| **Text Muted** | `text-zinc-400` | Secondary descriptions, timestamps |
-| **Text Dim** | `text-zinc-500` | Labels, hotkeys, status text |
-| **Accent Glow** | `shadow-[0_0_24px_rgba(255,255,255,0.06)]` | Ambient focus lighting |
+Выбор проекта: нажатие на папку внизу истории открывает системный выбор
+директории с текущим рабочим каталогом. Выбранная папка сразу открывается;
+отмена сохраняет текущий проект. Во время выбора повторное открытие
+недоступно, ошибки отображаются под кнопкой.
+
+## Единые меню и действие композера
+
+Справа в поле одна круглая кнопка 32 px: стрелка отправки в покое,
+квадрат остановки при генерации. Набранный черновик при остановке сохраняется.
+Выбор языка и профиля использует общий список с подписью, вторичной строкой,
+галочкой выбора и мягким акцентом активной строки. Список портируется в body,
+учитывает границы окна и открывается вверх при недостатке места. Фокус
+остаётся на кнопке; стрелки, Home/End, Enter, Escape и набор букв доступны.
+Меню моделей использует ту же геометрию и состояния, сохраняя поиск и ручной ID.
+Все модели и их названия берутся из выбранного профиля или API; встроенного
+каталога, рекомендуемой модели и скрытых маршрутов подстановки нет.
+
+## Создание провайдера
+
+В настройках моделей рядом с выбором профиля расположена кнопка
+«Добавить провайдера». Она открывает встроенную форму названия, адреса API
+и ключа; модель выбирается из API этого подключения или вводится вручную.
+Новый профиль сохраняется общей кнопкой настроек и становится активным.
+Отмена добавления восстанавливает предыдущий черновик подключения.
+Конфиг использует существующие providers/active_provider; GUI не заменяет
+другие профили. Несколько аккаунтов на одном endpoint получают разные ID.
+
+## Протокол подключения и авторизация
+
+Профили используют api_type chat_completions/openai_responses/anthropic_messages,
+api_key, api_key_env и headers в формате takiza-harness. Для создания и
+редактирования доступен один блок подключения: URL, протокол, источник ключа
+(ввод, переменная окружения, без ключа), произвольные пары HTTP-заголовков.
+Значения заголовков скрыты по умолчанию. Пользовательские заголовки заменяют
+стандартные без дублирования Authorization/x-api-key. Ключ из env не сохраняется
+в профиле в раскрытом виде. Каталог, генерация заголовка чата и ответы используют
+один протокол и авторизацию. Нативные ответы сохраняют закрытые reasoning-блоки
+для replay в рамках того же провайдера, модели и учётных данных.
+OAuth вход MCP из CLI не является авторизацией LLM-провайдера и в этот блок не входит.
+
+## Компактные настройки
+
+Модалка 620×560 px, одна прокручиваемая область и закреплённый футер.
+Три коротких вкладки: подключение, оформление, агент. Подключение показывает
+профиль и поле модели с поиском в выпадающем списке; ручной ID доступен отдельно.
+Нет сетки карточек моделей, дублированных ID и постоянно открытых пресетов.
+Параметры существующего подключения скрыты за одной строкой; новый провайдер
+открывает их сразу. Пресеты и HTTP-заголовки раскрываются по запросу.
+Оформление сохраняется сразу, без общей проверки API. Кнопка «Сохранить»
+появляется для изменённых черновиков подключения/агента; без изменений —
+«Готово». Отправляется только изменённая группа параметров. Статусы и ошибки
+отображаются одной строкой у футера; нет задержки закрытия после сохранения.
+
+Список открывается с фиксированной стороны до закрытия, поиск сохраняет высоту.
+Клавиатура прокручивает только список, без прокрутки модалки. Effort во вкладке
+агента показывает только уровни выбранной модели и «Автоматически»; при отсутствии
+данных — краткое пояснение. Смена протокола не меняет возможности модели,
+она меняет только формат API-запроса.
+
+Базовые модалки и выпадающие списки используют системный Noto Sans; технические
+поля с явным font-mono сохраняют моноширинный шрифт. Шрифт не загружается из сети.

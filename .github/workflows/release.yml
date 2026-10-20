@@ -9,18 +9,52 @@ on:
       tag:
         description: 'Git tag for the release (e.g. v0.1.0)'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.2.0'
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run version:sync
+      - run: npm test
+      - run: npm run build
+      - run: git diff --exit-code -- package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python3 tests/core-check.py --online
+
   create-release:
-    name: Create GitHub Release
+    needs: validate
+    name: Create Draft Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Extract release notes
+        run: node scripts/release-notes.mjs > release-notes.md
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: Ensure GitHub Release exists
         env:
@@ -29,8 +63,9 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           echo "Checking release for tag: $TAG"
           gh release view "$TAG" || gh release create "$TAG" \
+            --draft --verify-tag \
             --title "Takiza GUI $TAG" \
-            --generate-notes
+            --notes-file release-notes.md
 
   build-tauri:
     name: Build & Upload (${{ matrix.name }})
@@ -51,24 +86,32 @@ jobs:
           - platform: 'ubuntu-22.04'
             rust_target: 'x86_64-unknown-linux-gnu'
             name: 'Linux-x64'
-            args: ''
+            args: '--bundles deb,rpm,appimage'
           - platform: 'windows-latest'
             rust_target: 'x86_64-pc-windows-msvc'
             name: 'Windows-x64'
-            args: ''
+            args: '--bundles nsis,msi'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Validate and sync release version
+        run: npm run version:sync
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -93,7 +136,19 @@ jobs:
         with:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: 'Takiza GUI ${{ github.event.inputs.tag || github.ref_name }}'
-          releaseBody: 'See release assets below for Linux (.deb, .AppImage), Windows (.msi, .exe), and macOS (.dmg, .app).'
-          releaseDraft: false
+          releaseDraft: true
+          includeUpdaterJson: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish:
+    name: Publish complete release
+    needs: [create-release, build-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false

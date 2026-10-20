@@ -24,7 +24,22 @@ pub enum ToolOutputEvent {
 }
 
 pub fn get_tool_definitions() -> Value {
-    json!([
+    let mut definitions = json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the internet for current or unfamiliar information. Use when the user asks to search/browse online, or your knowledge is insufficient or may be outdated. Returns source titles, URLs and snippets, not full pages.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Search terms, optionally with site:domain filters." },
+                        "num_results": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Results to return; default 5." }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
         {
             "type": "function",
             "function": {
@@ -170,17 +185,90 @@ pub fn get_tool_definitions() -> Value {
                     "required": ["command"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_skill",
+                "description": "Reads the full instructions, guidelines, and rules from a named skill (such as 'claude-design', 'frontend-excellence', 'garden-skills'). Use this whenever the user task touches upon domain guidelines, UI aesthetics, or frontend standards.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the skill to read (e.g. 'claude-design', 'frontend-excellence')."
+                        }
+                    },
+                    "required": ["name"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "ask_question",
+                "description": "Presents an interactive questionnaire or clarifying question modal to the user. Use this when you need design feedback, user preferences (visual tone, tech stack, architectures, language), or need to resolve multiple valid approaches before proceeding. Supports single choice (radio), multiple choice (checkboxes), custom user input, or open-ended questions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "questions": {
+                            "type": "array",
+                            "description": "List of questions to present to the user.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "question": {
+                                        "type": "string",
+                                        "description": "The question prompt to present to the user."
+                                    },
+                                    "header": {
+                                        "type": "string",
+                                        "description": "Optional category tag or short header (e.g. 'Архитектура', 'Стиль UI', 'Язык/Стек')."
+                                    },
+                                    "options": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "List of answer choices for the user. If omitted or empty, this is an open-ended question for free-form user text."
+                                    },
+                                    "is_multi_select": {
+                                        "type": "boolean",
+                                        "description": "If true, user can select multiple options with checkboxes. If false (default), single choice radio button."
+                                    },
+                                    "allow_custom": {
+                                        "type": "boolean",
+                                        "description": "Whether to permit user to enter their own custom answer or additional notes. Default is true."
+                                    },
+                                    "placeholder": {
+                                        "type": "string",
+                                        "description": "Optional placeholder text for the custom/free-form text input."
+                                    }
+                                },
+                                "required": ["question"]
+                            }
+                        }
+                    },
+                    "required": ["questions"]
+                }
+            }
         }
-    ])
+    ]);
+    definitions.as_array_mut().unwrap().push(crate::core::grill_me::definition());
+    definitions
 }
 
 pub struct ToolExecutor {
     pub workspace_root: PathBuf,
+    web_proxy: Option<String>,
 }
 
 impl ToolExecutor {
     pub fn new(workspace_root: PathBuf) -> Self {
-        Self { workspace_root }
+        Self { workspace_root, web_proxy: None }
+    }
+
+    pub fn with_web_proxy(mut self, proxy: Option<String>) -> Self {
+        self.web_proxy = proxy;
+        self
     }
 
     pub fn resolve_path(&self, p: &str) -> PathBuf {
@@ -212,15 +300,22 @@ impl ToolExecutor {
         }
 
         let result = match name {
+            "web_search" => crate::core::web_search::search(&args, self.web_proxy.as_deref(), cancel_token).await,
             "read_file" => self.exec_read_file(&args),
             "write_file" => self.exec_write_file(&args),
             "edit_file" => self.exec_edit_file(&args),
             "list_dir" => self.exec_list_dir(&args),
             "find_files" => self.exec_find_files_with_events(&args, event_tx.as_ref()).await,
             "grep_search" => self.exec_grep_search_with_events(&args, event_tx.as_ref()).await,
+            "read_skill" => self.exec_read_skill(&args),
             "run_command" => {
                 self.exec_run_command(&args, event_tx.as_ref(), cancel_token)
                     .await
+            }
+            "grill-me" => Err("grill-me requires the interactive agent questionnaire handler".into()),
+            "ask_question" => {
+                // ask_question is intercepted directly by Agent loop, but if executed here:
+                Ok("Interactive questionnaire presented to user.".to_string())
             }
             other => Err(format!("Unknown tool: {other}")),
         };
@@ -240,6 +335,12 @@ impl ToolExecutor {
         }
 
         result
+    }
+
+    fn exec_read_skill(&self, args: &Value) -> Result<String, String> {
+        let name = args["name"].as_str().ok_or("Missing 'name' argument")?;
+        crate::core::skills::get_skill_content(&self.workspace_root, name)
+            .ok_or_else(|| format!("Skill '{}' not found in workspace (.agents/skills) or system skills directories", name))
     }
 
     fn exec_read_file(&self, args: &Value) -> Result<String, String> {
@@ -646,6 +747,12 @@ impl ToolExecutor {
             cmd.creation_flags(0x08000000);
         }
 
+        cmd.kill_on_drop(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.as_std_mut().process_group(0);
+        }
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("Failed to spawn command '{cmd_str}': {e}"))?;
@@ -692,6 +799,17 @@ impl ToolExecutor {
                     std::future::pending::<()>().await;
                 }
             } => {
+                if let Some(pid) = child.id() {
+                    #[cfg(unix)]
+                    // The child leads a new process group. Terminate its descendants
+                    // too, so they cannot keep writing after a workspace restore.
+                    unsafe { libc::kill(-(pid as i32), libc::SIGKILL); }
+                    #[cfg(windows)]
+                    {
+                        let _ = Command::new("taskkill.exe").args(["/PID", &pid.to_string(), "/T", "/F"])
+                            .stdout(Stdio::null()).stderr(Stdio::null()).status().await;
+                    }
+                }
                 let _ = child.kill().await;
                 Err("Command interrupted by user (Ctrl+C)".to_string())
             }
@@ -700,6 +818,7 @@ impl ToolExecutor {
             }
         };
 
+        if wait_result.is_err() { stdout_handle.abort(); stderr_handle.abort(); }
         let (stdout_res, stderr_res) = tokio::join!(stdout_handle, stderr_handle);
         let stdout_lines = stdout_res.unwrap_or_default();
         let stderr_lines = stderr_res.unwrap_or_default();
@@ -736,6 +855,18 @@ impl ToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn web_search_is_registered_and_uses_normal_tool_events() {
+        let definitions = get_tool_definitions();
+        let search = definitions.as_array().unwrap().iter().find(|tool| tool["function"]["name"] == "web_search").unwrap();
+        assert_eq!(search["function"]["parameters"]["required"], json!(["query"]));
+        let executor = ToolExecutor::new(std::env::temp_dir());
+        let (tx, mut rx) = mpsc::channel(10);
+        assert!(executor.execute("web_search", r#"{"query":" "}"#, Some(tx), None).await.is_err());
+        assert!(matches!(rx.recv().await, Some(ToolOutputEvent::Started { name, .. }) if name == "web_search"));
+        assert!(matches!(rx.recv().await, Some(ToolOutputEvent::Finished { name, is_error: true, .. }) if name == "web_search"));
+    }
 
     #[test]
     fn test_find_files_and_grep() {

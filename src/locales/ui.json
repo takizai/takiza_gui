@@ -1,0 +1,1606 @@
+{
+  "Восстановить": [
+    "Restore",
+    "还原"
+  ],
+  "Выбрано": [
+    "Selected",
+    "已选择"
+  ],
+  "Выбрать модель": [
+    "Choose a model",
+    "选择模型"
+  ],
+  "Глубина рассуждений": [
+    "Reasoning effort",
+    "推理深度"
+  ],
+  "Модели": [
+    "Models",
+    "模型"
+  ],
+  "Настройки": [
+    "Settings",
+    "设置"
+  ],
+  "Отмена": [
+    "Cancel",
+    "取消"
+  ],
+  "Поиск": [
+    "Search",
+    "搜索"
+  ],
+  "Поиск в интернете": [
+    "Web search",
+    "网络搜索"
+  ],
+  "Поиск файлов": [
+    "Find files",
+    "查找文件"
+  ],
+  "/путь/к/проекту": [
+    "/path/to/project",
+    "/项目/路径"
+  ],
+  "API Ключ:": [
+    "API key:",
+    "API 密钥："
+  ],
+  "Ctrl+Enter — отправить": [
+    "Ctrl+Enter — send",
+    "Ctrl+Enter — 发送"
+  ],
+  "Ctrl+Enter ↵ проверить ответы": [
+    "Ctrl+Enter ↵ review answers",
+    "Ctrl+Enter ↵ 检查回答"
+  ],
+  "Esc — отмена · Ctrl+Enter — сохранить": [
+    "Esc — cancel · Ctrl+Enter — save",
+    "Esc — 取消 · Ctrl+Enter — 保存"
+  ],
+  "ID модели": [
+    "Model ID",
+    "模型 ID"
+  ],
+  "ID модели у выбранного провайдера": [
+    "Model ID at the selected provider",
+    "所选提供商的模型 ID"
+  ],
+  "MoA станет доступен после появления входа в аккаунт Takiza.": [
+    "MoA will be available when Takiza account sign-in launches.",
+    "Takiza 账户登录功能上线后即可使用 MoA。"
+  ],
+  "OpenAI флагман для комплексной сквозной разработки, анализа и глубокого кодинга": [
+    "OpenAI flagship for development, analysis and coding",
+    "适用于开发、分析和编程的 OpenAI 旗舰模型"
+  ],
+  "Reasoning Effort (Глубина рассуждений для reasoning моделей):": [
+    "Reasoning effort:",
+    "推理强度："
+  ],
+  "Usage · в разработке": [
+    "Usage · in development",
+    "用量 · 开发中"
+  ],
+  "[Множественный выбор]": [
+    "[Multiple choice]",
+    "[多选]"
+  ],
+  "gsk_... или sk-...": [
+    "gsk_... or sk-...",
+    "gsk_... 或 sk-..."
+  ],
+  "socks5://127.0.0.1:1080 или http://...": [
+    "socks5://127.0.0.1:1080 or http://...",
+    "socks5://127.0.0.1:1080 或 http://..."
+  ],
+  "Агент запрашивает ваши предпочтения перед выполнением шагов": [
+    "The agent needs your preferences before continuing",
+    "代理需要了解您的偏好才能继续"
+  ],
+  "Агент запрашивает запуск системной команды в терминале:": [
+    "The agent requests permission to run a terminal command:",
+    "代理请求运行终端命令："
+  ],
+  "Активна": [
+    "Active",
+    "当前"
+  ],
+  "Библиотека скиллов": [
+    "Skill library",
+    "技能库"
+  ],
+  "Будет доступно после появления входа в аккаунт": [
+    "Available when account sign-in launches",
+    "账户登录功能上线后可用"
+  ],
+  "Быстрые пресеты провайдеров:": [
+    "Provider presets:",
+    "提供商预设："
+  ],
+  "Быстрый ответ, минимальное время размышления": [
+    "Fast response with minimal reasoning",
+    "快速响应，最少推理"
+  ],
+  "В работе": [
+    "Running",
+    "运行中"
+  ],
+  "В разработке": [
+    "In development",
+    "开发中"
+  ],
+  "В разработке ↗": [
+    "In development ↗",
+    "开发中 ↗"
+  ],
+  "В этом чате пока нет точек возврата.": [
+    "No checkpoints in this chat yet.",
+    "此对话暂无还原点。"
+  ],
+  "Ваш ответ на вопрос": [
+    "Your answer",
+    "您的回答"
+  ],
+  "Введите ваш ответ агенту...": [
+    "Enter your answer to the agent…",
+    "输入给代理的回答…"
+  ],
+  "Введите ваш ответ...": [
+    "Enter your answer…",
+    "输入您的回答…"
+  ],
+  "Ввести ID": [
+    "Enter ID",
+    "输入 ID"
+  ],
+  "Вернуть файлы и чат к точке возврата": [
+    "Restore files and chat to a checkpoint",
+    "将文件和对话还原到还原点"
+  ],
+  "Вернуться к точке": [
+    "Restore checkpoint",
+    "还原到检查点"
+  ],
+  "Включены": [
+    "Enabled",
+    "已启用"
+  ],
+  "Вниз": [
+    "Latest",
+    "最新消息"
+  ],
+  "Вопрос от агента": [
+    "Question from the agent",
+    "代理提问"
+  ],
+  "Восстановятся файлы и диалог. Последующие ответы исчезнут из чата. Текущее состояние сохранится в отдельной точке для отмены отката.": [
+    "Files and chat will be restored. Later replies will be removed. The current state will be saved so you can undo the restore.",
+    "将还原文件和对话，并移除后续回复。当前状态会保存为单独的还原点，以便撤销。"
+  ],
+  "Выберите визуальную тему оформления (синхронизируется с TUI командой": [
+    "Choose a theme (synced with the TUI command",
+    "选择主题（与 TUI 命令同步"
+  ],
+  "Выберите один вариант:": [
+    "Choose one option:",
+    "请选择一项："
+  ],
+  "Выберите профиль": [
+    "Choose a profile",
+    "选择配置"
+  ],
+  "Выберите скилл, чтобы прочитать инструкции.": [
+    "Select a skill to read its instructions.",
+    "选择技能以阅读说明。"
+  ],
+  "Выбор модели": [
+    "Choose a model",
+    "选择模型"
+  ],
+  "Выбрать проект": [
+    "Choose a project",
+    "选择项目"
+  ],
+  "Выбрать точку восстановления": [
+    "Choose a checkpoint",
+    "选择还原点"
+  ],
+  "Вывод · в работе": [
+    "Output · running",
+    "输出 · 运行中"
+  ],
+  "Вывод скопирован": [
+    "Output copied",
+    "已复制输出"
+  ],
+  "Выключены": [
+    "Disabled",
+    "已禁用"
+  ],
+  "Выполнено без вывода.": [
+    "Completed without output.",
+    "已完成，无输出。"
+  ],
+  "Высокоскоростная мультимодальная модель Google с глубоким оркестрированием тулов": [
+    "Fast Google multimodal model with tool orchestration",
+    "支持工具编排的 Google 高速多模态模型"
+  ],
+  "Высокоуровневые рассуждения и сложная STEM-архитектура с длинным контекстом": [
+    "Advanced reasoning and STEM architecture with long context",
+    "支持长上下文的高级推理与 STEM 架构"
+  ],
+  "Глобальный": [
+    "Global",
+    "全局"
+  ],
+  "Глубокий анализ и максимальное рассуждение": [
+    "Deep analysis and maximum reasoning",
+    "深入分析，最充分的推理"
+  ],
+  "Готово": [
+    "Done",
+    "完成"
+  ],
+  "Далее": [
+    "Next",
+    "下一步"
+  ],
+  "Действия": [
+    "Actions",
+    "操作"
+  ],
+  "Действия выполняются без подтверждения": [
+    "Actions run without confirmation",
+    "执行操作无需确认"
+  ],
+  "Действия и настройки": [
+    "Actions and settings",
+    "操作与设置"
+  ],
+  "Диалог": [
+    "Conversation",
+    "对话"
+  ],
+  "Диалоги": [
+    "Chats",
+    "对话"
+  ],
+  "Доступные скиллы": [
+    "Available skills",
+    "可用技能"
+  ],
+  "Загрузить модели провайдера": [
+    "Load provider models",
+    "加载提供商模型"
+  ],
+  "Загрузка моделей…": [
+    "Loading models…",
+    "正在加载模型…"
+  ],
+  "Загрузка содержимого…": [
+    "Loading content…",
+    "正在加载内容…"
+  ],
+  "Загрузка…": [
+    "Loading…",
+    "正在加载…"
+  ],
+  "Закрыть": [
+    "Close",
+    "关闭"
+  ],
+  "Закрыть выбор модели": [
+    "Close model picker",
+    "关闭模型选择器"
+  ],
+  "Закрыть историю": [
+    "Close chat history",
+    "关闭对话历史"
+  ],
+  "Закрыть меню": [
+    "Close menu",
+    "关闭菜单"
+  ],
+  "Закрыть окно": [
+    "Close window",
+    "关闭窗口"
+  ],
+  "Закрыть результат команды": [
+    "Dismiss command result",
+    "关闭命令结果"
+  ],
+  "Заменить ответ и последующую историю. Точка возврата сохранится.": [
+    "Replace the reply and subsequent history. A checkpoint will be saved.",
+    "替换回复及后续历史。将保存还原点。"
+  ],
+  "Запись файла": [
+    "Write file",
+    "写入文件"
+  ],
+  "Запрос на выполнение команды": [
+    "Command permission",
+    "命令执行权限"
+  ],
+  "Здесь появятся ваши диалоги": [
+    "Your chats will appear here",
+    "您的对话将显示在这里"
+  ],
+  "Идентификатор активной модели (Model ID):": [
+    "Active model ID:",
+    "当前模型 ID："
+  ],
+  "Изменение файла": [
+    "Edit file",
+    "编辑文件"
+  ],
+  "Изменить": [
+    "Edit",
+    "编辑"
+  ],
+  "Изменить ответ на вопрос {0}": [
+    "Edit answer to question {0}",
+    "编辑问题 {0} 的回答"
+  ],
+  "Изображение": [
+    "Image",
+    "图片"
+  ],
+  "Инструмент: {0}": [
+    "Tool: {0}",
+    "工具：{0}"
+  ],
+  "Использовать в чате": [
+    "Use in chat",
+    "在对话中使用"
+  ],
+  "История диалогов": [
+    "Chat history",
+    "对话历史"
+  ],
+  "К последнему сообщению": [
+    "Go to latest message",
+    "转到最新消息"
+  ],
+  "К списку ответов": [
+    "Back to answers",
+    "返回回答列表"
+  ],
+  "К списку скиллов": [
+    "Back to skills",
+    "返回技能列表"
+  ],
+  "Каждая bash команда запрашивает подтверждение": [
+    "Each shell command requires confirmation",
+    "每条 shell 命令均需确认"
+  ],
+  "Классический хакерский терминал с высококонтрастным зеленым фосфором": [
+    "Classic high-contrast green terminal",
+    "经典高对比度绿色终端"
+  ],
+  "Команда": [
+    "Command",
+    "命令"
+  ],
+  "Команда будет запущена в рабочей директории проекта с правами текущего пользователя.": [
+    "The command runs in the project directory with your user permissions.",
+    "命令将在项目目录中以当前用户权限运行。"
+  ],
+  "Команды выполняются автономно": [
+    "Commands run automatically",
+    "自动执行命令"
+  ],
+  "Команды и скиллы": [
+    "Commands and skills",
+    "命令与技能"
+  ],
+  "Команды и скиллы · ↑↓ выбрать · Tab дополнить · Esc закрыть": [
+    "Commands and skills · ↑↓ select · Tab complete · Esc close",
+    "命令与技能 · ↑↓ 选择 · Tab 补全 · Esc 关闭"
+  ],
+  "Конфигурация": [
+    "Configuration",
+    "配置"
+  ],
+  "Копировать": [
+    "Copy",
+    "复制"
+  ],
+  "Копировать вывод": [
+    "Copy output",
+    "复制输出"
+  ],
+  "Копировать имя": [
+    "Copy name",
+    "复制名称"
+  ],
+  "Лимит шагов агента": [
+    "Agent step limit",
+    "代理步数限制"
+  ],
+  "Лимит шагов должен быть целым числом от 0.": [
+    "Step limit must be a non-negative integer.",
+    "步数限制必须为非负整数。"
+  ],
+  "Масштаб:": [
+    "Zoom:",
+    "缩放："
+  ],
+  "Множественный выбор": [
+    "Multiple choice",
+    "多选"
+  ],
+  "Модели выбранного провайдера": [
+    "Models from this provider",
+    "此提供商的模型"
+  ],
+  "Модели не найдены": [
+    "No models found",
+    "未找到模型"
+  ],
+  "Модель ·": [
+    "Model ·",
+    "模型 ·"
+  ],
+  "Модель: {0}": [
+    "Model: {0}",
+    "模型：{0}"
+  ],
+  "Можно выбрать несколько вариантов:": [
+    "Choose one or more options:",
+    "可选择多项："
+  ],
+  "Можно изменить любой ответ. Агент получит ответы после подтверждения.": [
+    "You can edit any answer. The agent receives them after confirmation.",
+    "您可以修改任意回答。确认后才会发送给代理。"
+  ],
+  "Мультимодальные рассуждения с контекстом 256k и полной поддержкой инструментов": [
+    "Multimodal reasoning with 256k context and tool support",
+    "支持 256k 上下文和工具的多模态推理"
+  ],
+  "Нажмите": [
+    "Press",
+    "按下"
+  ],
+  "Назад": [
+    "Back",
+    "返回"
+  ],
+  "Написать свой вариант ответа...": [
+    "Write your own answer…",
+    "填写自己的回答…"
+  ],
+  "Написать свой ответ": [
+    "Write your own answer",
+    "填写自己的回答"
+  ],
+  "Напишите ваш ответ...": [
+    "Write your answer…",
+    "填写您的回答…"
+  ],
+  "Напишите ваш ответ:": [
+    "Write your answer:",
+    "填写您的回答："
+  ],
+  "Напишите свой вариант или уточнение...": [
+    "Write an answer or add details…",
+    "填写回答或补充说明…"
+  ],
+  "Настроить подтверждения действий": [
+    "Configure action approvals",
+    "配置操作确认"
+  ],
+  "Настроить провайдера и подключение": [
+    "Configure provider and connection",
+    "配置提供商和连接"
+  ],
+  "Настройки Takiza": [
+    "Takiza settings",
+    "Takiza 设置"
+  ],
+  "Настройки успешно сохранены!": [
+    "Settings saved!",
+    "设置已保存！"
+  ],
+  "Начать новый чат": [
+    "Start a new chat",
+    "开始新对话"
+  ],
+  "Начать чат с чистым контекстом": [
+    "Start a chat with fresh context",
+    "开始无历史上下文的对话"
+  ],
+  "Не удалось завершить действие": [
+    "Could not complete the action",
+    "无法完成操作"
+  ],
+  "Не удалось загрузить содержимое SKILL.md": [
+    "Could not load SKILL.md",
+    "无法加载 SKILL.md"
+  ],
+  "Не удалось загрузить список скиллов": [
+    "Could not load the skill list",
+    "无法加载技能列表"
+  ],
+  "Не удалось скопировать имя скилла": [
+    "Could not copy the skill name",
+    "无法复制技能名称"
+  ],
+  "Неизвестная команда /{0}. Доступные команды: /help.": [
+    "Unknown command /{0}. See /help for available commands.",
+    "未知命令 /{0}。使用 /help 查看可用命令。"
+  ],
+  "Нет ответа": [
+    "No answer",
+    "未回答"
+  ],
+  "Ничего не найдено": [
+    "Nothing found",
+    "未找到结果"
+  ],
+  "Новейшая высокоскоростная reasoning-модель OpenAI для сложного кода и логики": [
+    "Fast OpenAI reasoning model for complex code and logic",
+    "用于复杂代码与逻辑的 OpenAI 高速推理模型"
+  ],
+  "Новый диалог": [
+    "New chat",
+    "新对话"
+  ],
+  "Нужен ваш ответ": [
+    "Your answer is needed",
+    "需要您的回答"
+  ],
+  "ОК": [
+    "OK",
+    "确定"
+  ],
+  "Обновить список скиллов": [
+    "Refresh skills",
+    "刷新技能列表"
+  ],
+  "Один вариант": [
+    "Single choice",
+    "单选"
+  ],
+  "Ожидаю вывод…": [
+    "Waiting for output…",
+    "等待输出…"
+  ],
+  "Ожидаю ответ модели…": [
+    "Waiting for the model…",
+    "等待模型回复…"
+  ],
+  "Ожидаю подтверждение": [
+    "Waiting for approval",
+    "等待确认"
+  ],
+  "Опишите задачу для вашего проекта.": [
+    "Describe a task for your project.",
+    "描述您的项目任务。"
+  ],
+  "Остановить": [
+    "Stop",
+    "停止"
+  ],
+  "Остановить генерацию": [
+    "Stop generation",
+    "停止生成"
+  ],
+  "Остановить ответ и очистить очередь": [
+    "Stop the response and clear the queue",
+    "停止回复并清空队列"
+  ],
+  "Ответ дан": [
+    "Answered",
+    "已回答"
+  ],
+  "Отклонить": [
+    "Deny",
+    "拒绝"
+  ],
+  "Открыть библиотеку скиллов": [
+    "Open the skill library",
+    "打开技能库"
+  ],
+  "Открыть настройки": [
+    "Open settings",
+    "打开设置"
+  ],
+  "Открыть проект": [
+    "Open project",
+    "打开项目"
+  ],
+  "Открыть сохранённый чат": [
+    "Open a saved chat",
+    "打开已保存的对话"
+  ],
+  "Отменить": [
+    "Cancel",
+    "取消"
+  ],
+  "Отправить (Enter)": [
+    "Send (Enter)",
+    "发送（Enter）"
+  ],
+  "Отправить сообщение": [
+    "Send message",
+    "发送消息"
+  ],
+  "Отправка…": [
+    "Sending…",
+    "正在发送…"
+  ],
+  "Очередь ·": [
+    "Queue ·",
+    "队列 ·"
+  ],
+  "Ошибка": [
+    "Error",
+    "错误"
+  ],
+  "Параметры": [
+    "Arguments",
+    "参数"
+  ],
+  "Перегенерировать": [
+    "Regenerate",
+    "重新生成"
+  ],
+  "Перегенерировать ответ": [
+    "Regenerate response",
+    "重新生成回复"
+  ],
+  "Перегенерировать ответ на сообщение": [
+    "Regenerate reply to message",
+    "重新生成此消息的回复"
+  ],
+  "Перегенерировать ответ с этого места": [
+    "Regenerate from here",
+    "从此处重新生成"
+  ],
+  "Переделать": [
+    "Edit",
+    "编辑"
+  ],
+  "Переделать сообщение": [
+    "Edit message",
+    "编辑消息"
+  ],
+  "Переключение…": [
+    "Switching…",
+    "正在切换…"
+  ],
+  "Пишет ответ": [
+    "Writing a response",
+    "正在回复"
+  ],
+  "По умолчанию 100; 0 — без ограничения. TAKIZA_MAX_STEPS имеет приоритет.": [
+    "Default: 100; 0 means unlimited. TAKIZA_MAX_STEPS takes priority.",
+    "默认 100；0 表示无限制。TAKIZA_MAX_STEPS 优先。"
+  ],
+  "Повторить": [
+    "Retry",
+    "重试"
+  ],
+  "Подключение": [
+    "Connection",
+    "连接"
+  ],
+  "Подождите…": [
+    "Please wait…",
+    "请稍候…"
+  ],
+  "Подробнее · Ctrl+O": [
+    "Details · Ctrl+O",
+    "详情 · Ctrl+O"
+  ],
+  "Подтвердить и отправить": [
+    "Confirm and send",
+    "确认并发送"
+  ],
+  "Подтверждения": [
+    "Approvals",
+    "操作确认"
+  ],
+  "Поиск в коде": [
+    "Search code",
+    "搜索代码"
+  ],
+  "Поиск диалогов": [
+    "Search chats",
+    "搜索对话"
+  ],
+  "Поиск модели": [
+    "Search models",
+    "搜索模型"
+  ],
+  "Поиск модели…": [
+    "Search models…",
+    "搜索模型…"
+  ],
+  "Поиск скиллов": [
+    "Search skills",
+    "搜索技能"
+  ],
+  "Поиск скиллов…": [
+    "Search skills…",
+    "搜索技能…"
+  ],
+  "Показать": [
+    "Show",
+    "显示"
+  ],
+  "Показать изменения файлов в Git": [
+    "Show Git changes",
+    "显示 Git 更改"
+  ],
+  "Показать команды и горячие клавиши": [
+    "Show commands and shortcuts",
+    "显示命令和快捷键"
+  ],
+  "Показать модель, режим и рабочую папку": [
+    "Show model, mode and workspace",
+    "显示模型、模式和工作目录"
+  ],
+  "Показать сохранённые чаты": [
+    "Show saved chats",
+    "显示已保存的对话"
+  ],
+  "Пользователь решил пропустить опросник. Агент продолжил работу со стандартными настройками.": [
+    "The questionnaire was skipped. The agent continued with defaults.",
+    "已跳过问卷，代理将使用默认设置继续。"
+  ],
+  "Прикреплённое изображение": [
+    "Attached image",
+    "附件图片"
+  ],
+  "Провайдер из конфига Takiza": [
+    "Provider from Takiza configuration",
+    "Takiza 配置中的提供商"
+  ],
+  "Проверить ответы": [
+    "Review answers",
+    "检查回答"
+  ],
+  "Проверка ответов": [
+    "Review answers",
+    "检查回答"
+  ],
+  "Проверьте ответы": [
+    "Review your answers",
+    "请检查您的回答"
+  ],
+  "Продолжить": [
+    "Continue",
+    "继续"
+  ],
+  "Проект": [
+    "Project",
+    "项目"
+  ],
+  "Прокси (HTTP/HTTPS/SOCKS5):": [
+    "Proxy (HTTP/HTTPS/SOCKS5):",
+    "代理（HTTP/HTTPS/SOCKS5）："
+  ],
+  "Пропустить": [
+    "Skip",
+    "跳过"
+  ],
+  "Пропустить опросник (Esc)": [
+    "Skip questionnaire (Esc)",
+    "跳过问卷（Esc）"
+  ],
+  "Пропустить опросник и использовать стандартные настройки агента": [
+    "Skip the questionnaire and use defaults",
+    "跳过问卷并使用默认设置"
+  ],
+  "Пропущено": [
+    "Skipped",
+    "已跳过"
+  ],
+  "Просмотр скилла": [
+    "Skill preview",
+    "技能预览"
+  ],
+  "Путь к проекту": [
+    "Project path",
+    "项目路径"
+  ],
+  "Развернуть": [
+    "Expand",
+    "展开"
+  ],
+  "Размышляет": [
+    "Thinking",
+    "思考中"
+  ],
+  "Разрешать всегда": [
+    "Always allow",
+    "始终允许"
+  ],
+  "Разрешить разово": [
+    "Allow once",
+    "允许一次"
+  ],
+  "Рассуждения": [
+    "Reasoning",
+    "推理"
+  ],
+  "Рассуждения модели": [
+    "Model reasoning",
+    "模型推理"
+  ],
+  "Редактирование": [
+    "Editing",
+    "编辑中"
+  ],
+  "Редактировать сообщение": [
+    "Edit message",
+    "编辑消息"
+  ],
+  "Режим Auto-Approve (без подтверждений команд)": [
+    "Auto-approve commands",
+    "自动批准命令"
+  ],
+  "Режимы": [
+    "Modes",
+    "模式"
+  ],
+  "Режимы · MoA": [
+    "Modes · MoA",
+    "模式 · MoA"
+  ],
+  "Режимы · в разработке": [
+    "Modes · in development",
+    "模式 · 开发中"
+  ],
+  "Результат": [
+    "Result",
+    "结果"
+  ],
+  "С чего начнём?": [
+    "What shall we work on?",
+    "我们从哪里开始？"
+  ],
+  "Сбалансированное рассуждение (по умолчанию)": [
+    "Balanced reasoning (default)",
+    "均衡推理（默认）"
+  ],
+  "Сбалансированные рассуждения и анализ сложных кодовых баз при экономичном расходе": [
+    "Balanced reasoning for complex codebases with efficient usage",
+    "以较低用量对复杂代码库进行均衡推理"
+  ],
+  "Сбросить переопределения к настройкам Takiza Harness": [
+    "Reset overrides to Takiza Harness defaults",
+    "重置为 Takiza Harness 默认设置"
+  ],
+  "Свернуть": [
+    "Collapse",
+    "收起"
+  ],
+  "Свободный ответ": [
+    "Free text",
+    "自由回答"
+  ],
+  "Свой вариант ответа или дополнение": [
+    "Custom answer or additional details",
+    "自定义回答或补充说明"
+  ],
+  "Свой ответ: {0}": [
+    "Custom answer: {0}",
+    "自定义回答：{0}"
+  ],
+  "Сейчас запросы отправляются выбранной модели вашего провайдера.": [
+    "Requests currently use your selected provider model.",
+    "当前请求使用您选择的提供商模型。"
+  ],
+  "Синхронизированные пути конфигурации:": [
+    "Configuration sources:",
+    "配置来源："
+  ],
+  "Скилл не содержит документации.": [
+    "This skill has no documentation.",
+    "此技能暂无文档。"
+  ],
+  "Скиллы": [
+    "Skills",
+    "技能"
+  ],
+  "Скиллы ·": [
+    "Skills ·",
+    "技能 ·"
+  ],
+  "Скиллы пока не установлены": [
+    "No skills installed yet",
+    "尚未安装技能"
+  ],
+  "Скопировано": [
+    "Copied",
+    "已复制"
+  ],
+  "Скопировать имя скилла": [
+    "Copy skill name",
+    "复制技能名称"
+  ],
+  "Скопировать ответ": [
+    "Copy response",
+    "复制回复"
+  ],
+  "Скрыть": [
+    "Hide",
+    "隐藏"
+  ],
+  "Сменить тему": [
+    "Change theme",
+    "更改主题"
+  ],
+  "Сначала настройте подключение к провайдеру.": [
+    "Set up a provider connection first.",
+    "请先配置提供商连接。"
+  ],
+  "Содержимое папки": [
+    "List directory",
+    "列出目录"
+  ],
+  "Сообщение, команда или скилл": [
+    "Message, command or skill",
+    "消息、命令或技能"
+  ],
+  "Сохранение...": [
+    "Saving…",
+    "正在保存…"
+  ],
+  "Сохранить": [
+    "Save",
+    "保存"
+  ],
+  "Сохранить и перегенерировать": [
+    "Save and regenerate",
+    "保存并重新生成"
+  ],
+  "Сохранённые диалоги": [
+    "Saved chats",
+    "已保存的对话"
+  ],
+  "Специализированный чемпион генерации кода, поиска багов и анализа интерфейсов": [
+    "Specialized in code generation, debugging and UI analysis",
+    "专注于代码生成、调试和界面分析"
+  ],
+  "Список загружается из текущего подключения. Если API не поддерживает список моделей, введите ID вручную.": [
+    "Models come from the current connection. If listing is unsupported, enter an ID manually.",
+    "从当前连接加载模型。如果 API 不支持模型列表，请手动输入 ID。"
+  ],
+  "Список скиллов": [
+    "Skill list",
+    "技能列表"
+  ],
+  "Спокойная скандинавская палитра с прохладными морозными оттенками циана": [
+    "Calm Scandinavian palette with cool cyan accents",
+    "宁静的斯堪的纳维亚配色，点缀冷青色"
+  ],
+  "Темы": [
+    "Appearance",
+    "外观"
+  ],
+  "Убрать изображение": [
+    "Remove image",
+    "移除图片"
+  ],
+  "Удалить диалог {0}": [
+    "Delete chat {0}",
+    "删除对话 {0}"
+  ],
+  "Удалить запрос из очереди": [
+    "Remove queued request",
+    "移除队列中的请求"
+  ],
+  "Укажите URL провайдера и ID модели.": [
+    "Enter the provider URL and model ID.",
+    "请输入提供商 URL 和模型 ID。"
+  ],
+  "Уточнение": [
+    "Clarification",
+    "确认详情"
+  ],
+  "Уточнение деталей реализации": [
+    "Clarify implementation details",
+    "确认实现细节"
+  ],
+  "Уточнения": [
+    "Clarifications",
+    "确认详情"
+  ],
+  "Файлы не изменились. Диалог будет восстановлен.": [
+    "Files are unchanged. The chat will be restored.",
+    "文件未更改。将还原对话。"
+  ],
+  "Фирменный теплый янтарно-золотой акцент Takiza с глубоким контрастом": [
+    "Warm Takiza gold on a dark background",
+    "深色背景上的 Takiza 暖金色"
+  ],
+  "Флагман Anthropic для продолжительных агентных задач и full-stack инженерии": [
+    "Anthropic flagship for long-running agent tasks and full-stack development",
+    "用于长时间代理任务和全栈开发的 Anthropic 旗舰模型"
+  ],
+  "Фронтирная reasoning-модель xAI для аудита безопасности, реверс-инжиниринга и Python": [
+    "Advanced xAI reasoning for security, reverse engineering and Python",
+    "用于安全审计、逆向工程和 Python 的 xAI 高级推理模型"
+  ],
+  "Фронтирная производительность для автономной разработки, рефакторинга и верстки": [
+    "Advanced performance for development, refactoring and UI implementation",
+    "用于开发、重构和界面实现的高性能模型"
+  ],
+  "Чистый минимализм в оттенках серебра и белого без отвлекающих цветов": [
+    "Minimal silver and white without distracting colors",
+    "简约银白色，减少色彩干扰"
+  ],
+  "Чтение скилла": [
+    "Read skill",
+    "读取技能"
+  ],
+  "Чтение файла": [
+    "Read file",
+    "读取文件"
+  ],
+  "Что нужно сделать?": [
+    "What needs to be done?",
+    "需要做什么？"
+  ],
+  "Энергичный неоновый стиль с акцентами мадженты и электрического циана": [
+    "Neon magenta with electric cyan accents",
+    "霓虹洋红与电光青色"
+  ],
+  "для проверки ответов": [
+    "to review answers",
+    "以检查回答"
+  ],
+  "не выбрана": [
+    "not selected",
+    "未选择"
+  ],
+  "скилл": [
+    "skill",
+    "技能"
+  ],
+  "чтобы пропустить": [
+    "to skip",
+    "以跳过"
+  ],
+  "• Активная тема:": [
+    "• Active theme:",
+    "• 当前主题："
+  ],
+  "• Активный режим: manual": [
+    "• Active mode: manual",
+    "• 当前模式：manual"
+  ],
+  "• Рабочий каталог:": [
+    "• Workspace:",
+    "• 工作目录："
+  ],
+  "• Файл настроек: ~/.config/takiza/config.json": [
+    "• Configuration: ~/.config/takiza/config.json",
+    "• 配置文件：~/.config/takiza/config.json"
+  ],
+  "Язык интерфейса": [
+    "Interface language",
+    "界面语言"
+  ],
+  "Язык меняет только интерфейс, а не сообщения и ответы модели.": [
+    "This changes the interface only, not messages or model responses.",
+    "此设置仅更改界面语言，不改变消息或模型回复。"
+  ],
+  "Не удалось сохранить язык": [
+    "Could not save the language",
+    "无法保存语言设置"
+  ],
+  "Фиолетовые акценты и мятные рамки": [
+    "Violet accents with soft mint borders",
+    "紫色点缀与柔和薄荷色边框"
+  ],
+  "Коралловые акценты и розовые рамки": [
+    "Warm coral accents with muted rose borders",
+    "温暖珊瑚色点缀与柔和玫瑰色边框"
+  ],
+  "Яркий океанский синий и бирюзовые рамки": [
+    "Bright ocean blue with turquoise borders",
+    "明亮海蓝与绿松石色边框"
+  ],
+  "Нежный розовый и лавандовые рамки": [
+    "Soft blossom pink with lavender borders",
+    "柔和樱粉与薰衣草色边框"
+  ],
+  "Золотые акценты и тёмно-бирюзовые рамки": [
+    "Golden accents with balanced teal borders",
+    "金色点缀与均衡青绿色边框"
+  ],
+  "/{0} не принимает аргументы.": [
+    "/{0} takes no arguments.",
+    "/{0} 不接受参数。"
+  ],
+  "Укажите один идентификатор модели: /model model-id.": [
+    "Enter one model ID: /model model-id.",
+    "请输入一个模型 ID：/model model-id。"
+  ],
+  "Темы: amber, cyberpunk, emerald, nord, monochrome, dracula, rose, ocean, sakura, solarized": [
+    "Themes: amber, cyberpunk, emerald, nord, monochrome, dracula, rose, ocean, sakura, solarized",
+    "主题：amber、cyberpunk、emerald、nord、monochrome、dracula、rose、ocean、sakura、solarized"
+  ],
+  "Неизвестная тема.": [
+    "Unknown theme.",
+    "未知主题。"
+  ],
+  "Режимы Takiza (MoA) в разработке и будут доступны после появления входа в аккаунт. Сейчас используется ручной выбор модели.": [
+    "Takiza modes (MoA) are in development and will be available after account sign-in launches. Model selection is currently manual.",
+    "Takiza 模式（MoA）正在开发中，将在账户登录功能上线后提供。目前使用手动选择的模型。"
+  ],
+  "Глубина рассуждений: {0}. Варианты: low, medium, high": [
+    "Reasoning effort: {0}. Options: low, medium, high",
+    "推理强度：{0}。可选值：low、medium、high"
+  ],
+  "Используйте /effort low, medium или high.": [
+    "Use /effort low, medium or high.",
+    "请使用 /effort low、medium 或 high。"
+  ],
+  "Подтверждения: {0}. /approval on — спрашивать, /approval off — разрешать автоматически.": [
+    "Approvals: {0}. /approval on — ask, /approval off — allow automatically.",
+    "操作确认：{0}。/approval on — 询问，/approval off — 自动允许。"
+  ],
+  "Используйте /approval on или /approval off.": [
+    "Use /approval on or /approval off.",
+    "请使用 /approval on 或 /approval off。"
+  ],
+  "нет Git": [
+    "no Git",
+    "无 Git"
+  ],
+  "Нет изменений в отслеживаемых файлах.": [
+    "No changes in tracked files.",
+    "已跟踪文件没有更改。"
+  ],
+  "Нет сохранённых чатов.": [
+    "No saved chats.",
+    "暂无已保存的对话。"
+  ],
+  "Укажите идентификатор чата: /resume session-id. Список доступен через /history.": [
+    "Enter a chat ID: /resume session-id. Use /history to see the list.",
+    "请输入对话 ID：/resume session-id。使用 /history 查看列表。"
+  ],
+  "Некорректный идентификатор чата. Выберите его из /history.": [
+    "Invalid chat ID. Choose one from /history.",
+    "无效的对话 ID。请从 /history 中选择。"
+  ],
+  "Не удалось получить модели. Проверьте подключение и прокси.": [
+    "Could not load models. Check your connection and proxy.",
+    "无法加载模型。请检查连接和代理。"
+  ],
+  "Провайдер вернул некорректный список моделей": [
+    "The provider returned an invalid model list",
+    "提供商返回了无效的模型列表"
+  ],
+  "Провайдер не поддерживает список моделей. Укажите ID вручную.": [
+    "The provider does not support model listing. Enter an ID manually.",
+    "提供商不支持模型列表。请手动输入 ID。"
+  ],
+  "Некорректный URL провайдера": [
+    "Invalid provider URL",
+    "无效的提供商 URL"
+  ],
+  "Нужен HTTP или HTTPS URL": [
+    "An HTTP or HTTPS URL is required",
+    "需要 HTTP 或 HTTPS URL"
+  ],
+  "Некорректный прокси": [
+    "Invalid proxy",
+    "无效的代理"
+  ],
+  "Не удалось создать подключение": [
+    "Could not create the connection",
+    "无法建立连接"
+  ],
+  "Дождитесь завершения текущего ответа.": [
+    "Wait for the current response to finish.",
+    "请等待当前回复完成。"
+  ],
+  "Сообщение не найдено.": [
+    "Message not found.",
+    "未找到消息。"
+  ],
+  "Введите текст сообщения.": [
+    "Enter a message.",
+    "请输入消息内容。"
+  ],
+  "Можно перегенерировать только ответ на запрос к модели.": [
+    "Only model responses can be regenerated.",
+    "只能重新生成模型回复。"
+  ],
+  "Перегенерация доступна только для запросов к модели.": [
+    "Regeneration is available for model requests only.",
+    "仅模型请求支持重新生成。"
+  ],
+  "Дождись завершения текущей операции.": [
+    "Wait for the current operation to finish.",
+    "请等待当前操作完成。"
+  ],
+  "\n\n $скилл, @скилл или /скилл — вставить скилл в запрос. ↑/↓ — выбор, Tab — дополнение, Esc — закрыть, Shift+Enter — новая строка. Двойной Esc — очистить ввод. Ctrl+O — развернуть вывод. !команда — выполнить в терминале.": [
+    "\n\n $skill, @skill or /skill — insert a skill. ↑/↓ — select, Tab — complete, Esc — close, Shift+Enter — newline. Double Esc — clear input. Ctrl+O — expand output. !command — run a terminal command.",
+    "\n\n $技能、@技能 或 /技能 — 插入技能。↑/↓ — 选择，Tab — 补全，Esc — 关闭，Shift+Enter — 换行。双击 Esc — 清空输入。Ctrl+O — 展开输出。!命令 — 运行终端命令。"
+  ],
+  "Модель: {0}\nРежим: {1}\nПапка: {2}\nВетка: {3}": [
+    "Model: {0}\nMode: {1}\nWorkspace: {2}\nBranch: {3}",
+    "模型：{0}\n模式：{1}\n工作目录：{2}\n分支：{3}"
+  ],
+  "Amber (золото Takiza)": [
+    "Amber (Takiza Gold)",
+    "Amber（Takiza 金色）"
+  ],
+  "Cyberpunk (неоновый розовый и бирюзовый)": [
+    "Cyberpunk (Neon Pink & Cyan)",
+    "Cyberpunk（霓虹粉与青色）"
+  ],
+  "Emerald (зелёная матрица)": [
+    "Emerald (Matrix Green)",
+    "Emerald（矩阵绿）"
+  ],
+  "Nord (арктический голубой)": [
+    "Nord (Frost Arctic Blue)",
+    "Nord（冰霜蓝）"
+  ],
+  "Monochrome (лаконичный белый)": [
+    "Monochrome (Minimalist White)",
+    "Monochrome（极简白）"
+  ],
+  "Сначала выберите модель": [
+    "Choose a model first",
+    "请先选择模型"
+  ],
+  "Прикрепить файлы · текст, код, изображения": [
+    "Attach files · text, code, images",
+    "添加文件 · 文本、代码、图片"
+  ],
+  "Прикрепить файлы · текст и код. Поддержка изображений не подтверждена.": [
+    "Attach files · text and code. Image support is unconfirmed.",
+    "添加文件 · 文本和代码。图片支持尚未确认。"
+  ],
+  "Эта модель не подтвердила поддержку изображений. Выберите другую модель или уберите изображения.": [
+    "Image support is unconfirmed for this model. Choose another model or remove the images.",
+    "此模型的图片支持尚未确认。请选择其他模型或移除图片。"
+  ],
+  "Можно прикрепить не больше 10 файлов.": [
+    "You can attach up to 10 files.",
+    "最多可添加 10 个文件。"
+  ],
+  "Формат файла «{0}» не поддерживается. Выберите текстовый файл или исходный код.": [
+    "The format of “{0}” is unsupported. Choose a text file or source code.",
+    "不支持文件“{0}”的格式。请选择文本文件或源代码。"
+  ],
+  "Файл «{0}» слишком большой. Лимит: {1} МБ.": [
+    "“{0}” is too large. Limit: {1} MB.",
+    "文件“{0}”过大。大小限制：{1} MB。"
+  ],
+  "Вложение": [
+    "Attachment",
+    "附件"
+  ],
+  "Убрать файл {0}": [
+    "Remove file {0}",
+    "移除文件 {0}"
+  ],
+  "Прикрепить файлы": [
+    "Attach files",
+    "添加文件"
+  ],
+  "Выбрать папку проекта": [
+    "Choose project folder",
+    "选择项目文件夹"
+  ],
+  "Открытие…": [
+    "Opening…",
+    "正在打开…"
+  ],
+  "Информация о провайдере": [
+    "Provider information",
+    "提供商信息"
+  ],
+  "Статистика использования в GUI пока недоступна.": [
+    "Usage statistics are not yet available in the GUI.",
+    "图形界面暂不支持用量统计。"
+  ],
+  "Провайдер": [
+    "Provider",
+    "提供商"
+  ],
+  "Адрес API": [
+    "API endpoint",
+    "API 地址"
+  ],
+  "Модель": [
+    "Model",
+    "模型"
+  ],
+  "Пользовательский провайдер": [
+    "Custom provider",
+    "自定义提供商"
+  ],
+  "Обновить модели": [
+    "Refresh models",
+    "刷新模型"
+  ],
+  "• Активная модель:": [
+    "• Active model:",
+    "• 当前模型："
+  ],
+  "• Адрес API:": [
+    "• API endpoint:",
+    "• API 地址："
+  ],
+  "Укажите название провайдера.": [
+    "Enter a provider name.",
+    "请输入提供商名称。"
+  ],
+  "Укажите корректный HTTP или HTTPS адрес API.": [
+    "Enter a valid HTTP or HTTPS API endpoint.",
+    "请输入有效的 HTTP 或 HTTPS API 地址。"
+  ],
+  "Новый провайдер": [
+    "New provider",
+    "新提供商"
+  ],
+  "Добавить провайдера": [
+    "Add provider",
+    "添加提供商"
+  ],
+  "Отменить добавление": [
+    "Cancel adding",
+    "取消添加"
+  ],
+  "Название провайдера": [
+    "Provider name",
+    "提供商名称"
+  ],
+  "Например, рабочий провайдер": [
+    "For example, work provider",
+    "例如，工作提供商"
+  ],
+  "Скрыть ключ": [
+    "Hide API key",
+    "隐藏 API 密钥"
+  ],
+  "Показать ключ": [
+    "Show API key",
+    "显示 API 密钥"
+  ],
+  "Необязательно для локального API": [
+    "Optional for a local API",
+    "本地 API 可不填写"
+  ],
+  "Добавить и выбрать": [
+    "Add and select",
+    "添加并选择"
+  ],
+  "Ключ или токен": [
+    "Key or token",
+    "密钥或令牌"
+  ],
+  "Переменная окружения": [
+    "Environment variable",
+    "环境变量"
+  ],
+  "Без API-ключа": [
+    "No API key",
+    "不使用 API 密钥"
+  ],
+  "Протокол API": [
+    "API protocol",
+    "API 协议"
+  ],
+  "Авторизация": [
+    "Authentication",
+    "身份验证"
+  ],
+  "API-ключ или токен": [
+    "API key or token",
+    "API 密钥或令牌"
+  ],
+  "Ключ передаётся в x-api-key.": [
+    "The key is sent in x-api-key.",
+    "密钥通过 x-api-key 发送。"
+  ],
+  "Токен передаётся как Authorization: Bearer.": [
+    "The token is sent as Authorization: Bearer.",
+    "令牌通过 Authorization: Bearer 发送。"
+  ],
+  "Имя переменной окружения": [
+    "Environment variable name",
+    "环境变量名称"
+  ],
+  "Значение берётся из окружения процесса GUI и не записывается в конфиг.": [
+    "The value comes from the GUI process environment and is not written to the config.",
+    "从图形界面进程的环境变量中读取密钥，不将其写入配置。"
+  ],
+  "HTTP-заголовки": [
+    "HTTP headers",
+    "HTTP 请求头"
+  ],
+  "Произвольная авторизация и параметры подключения. Эти заголовки заменяют стандартные.": [
+    "Custom authentication and connection settings. These headers override the defaults.",
+    "自定义身份验证和连接参数。这些请求头将覆盖默认值。"
+  ],
+  "Имя заголовка {0}": [
+    "Header name {0}",
+    "请求头名称 {0}"
+  ],
+  "Значение заголовка {0}": [
+    "Header value {0}",
+    "请求头值 {0}"
+  ],
+  "Значение": [
+    "Value",
+    "值"
+  ],
+  "Удалить заголовок {0}": [
+    "Remove header {0}",
+    "删除请求头 {0}"
+  ],
+  "Добавить заголовок": [
+    "Add header",
+    "添加请求头"
+  ],
+  "Скрыть значения": [
+    "Hide values",
+    "隐藏值"
+  ],
+  "Показать значения": [
+    "Show values",
+    "显示值"
+  ],
+  "Некорректное имя переменной окружения.": [
+    "Invalid environment variable name.",
+    "环境变量名称无效。"
+  ],
+  "Некорректное имя HTTP-заголовка.": [
+    "Invalid HTTP header name.",
+    "HTTP 请求头名称无效。"
+  ],
+  "Некорректное значение HTTP-заголовка.": [
+    "Invalid HTTP header value.",
+    "HTTP 请求头值无效。"
+  ],
+  "HTTP-заголовки не должны повторяться.": [
+    "HTTP headers must be unique.",
+    "HTTP 请求头不能重复。"
+  ],
+  "Переменная окружения с ключом не задана.": [
+    "The API key environment variable is not set.",
+    "未设置 API 密钥环境变量。"
+  ],
+  "Поиск в списке": [
+    "Search options",
+    "搜索选项"
+  ],
+  "Низкая": [
+    "Low",
+    "低"
+  ],
+  "Средняя": [
+    "Medium",
+    "中"
+  ],
+  "Высокая": [
+    "High",
+    "高"
+  ],
+  "Сохранено": [
+    "Saved",
+    "已保存"
+  ],
+  "Не удалось сохранить тему": [
+    "Could not save theme",
+    "无法保存主题"
+  ],
+  "Разделы настроек": [
+    "Settings sections",
+    "设置分类"
+  ],
+  "Оформление": [
+    "Appearance",
+    "外观"
+  ],
+  "Агент": [
+    "Agent",
+    "智能体"
+  ],
+  "Добавить": [
+    "Add",
+    "添加"
+  ],
+  "Текущее подключение": [
+    "Current connection",
+    "当前连接"
+  ],
+  "Заполнить из пресета": [
+    "Use a preset",
+    "使用预设"
+  ],
+  "Выбрать пресет": [
+    "Choose a preset",
+    "选择预设"
+  ],
+  "Параметры подключения": [
+    "Connection details",
+    "连接设置"
+  ],
+  "Выбрать из списка": [
+    "Choose from list",
+    "从列表中选择"
+  ],
+  "Обновить": [
+    "Refresh",
+    "刷新"
+  ],
+  "Загрузите список или введите ID": [
+    "Load models or enter an ID",
+    "加载模型列表或输入 ID"
+  ],
+  "Модели текущего провайдера. Можно указать ID вручную.": [
+    "Models from this provider. You can also enter an ID.",
+    "当前提供商的模型，也可以手动输入 ID。"
+  ],
+  "Тема": [
+    "Theme",
+    "主题"
+  ],
+  "Изменения применяются сразу.": [
+    "Changes apply immediately.",
+    "更改立即生效。"
+  ],
+  "Подтверждения команд": [
+    "Command approvals",
+    "命令确认"
+  ],
+  "Перед запуском команд": [
+    "Before running commands",
+    "运行命令前"
+  ],
+  "0 — без ограничения": [
+    "0 for unlimited",
+    "0 表示不限制"
+  ],
+  "Дополнительно": [
+    "Advanced",
+    "高级"
+  ],
+  "Прокси": [
+    "Proxy",
+    "代理"
+  ],
+  "Профили подключений общие с CLI.": [
+    "Connection profiles are shared with the CLI.",
+    "连接配置与 CLI 共用。"
+  ],
+  "Сбросить изменения": [
+    "Reset changes",
+    "重置更改"
+  ],
+  "Модель не поддерживает смену effort": [
+    "This model does not support adjustable effort",
+    "此模型不支持调整推理强度"
+  ],
+  "Автоматически": [
+    "Automatic",
+    "自动"
+  ],
+  "Разобрать план через интервью": [
+    "Stress-test a plan through an interview",
+    "通过访谈检验计划"
+  ],
+  "Разбор плана": [
+    "Plan interview",
+    "计划访谈"
+  ],
+  "Опрос завершён досрочно. Уже данные ответы сохранены.": [
+    "The interview ended early. Answers already given were preserved.",
+    "访谈已提前结束，已有回答已保留。"
+  ]
+}

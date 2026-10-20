@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from "../../i18n";
 import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Minus, Square, Copy, X } from "lucide-vue-next";
+
+const { tr } = useI18n();
 
 const isMaximized = ref(false);
 
@@ -49,7 +52,7 @@ onMounted(() => {
     <button
       @click="minimize"
       class="h-7 w-8 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.08] transition-colors cursor-pointer rounded-md"
-      title="Свернуть"
+      :title='tr("Свернуть")'
     >
       <Minus class="w-3.5 h-3.5" />
     </button>
@@ -58,7 +61,7 @@ onMounted(() => {
     <button
       @click="toggleMaximize"
       class="h-7 w-8 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.08] transition-colors cursor-pointer rounded-md"
-      :title="isMaximized ? 'Восстановить' : 'Развернуть'"
+      :title="isMaximized ? tr('Восстановить') : tr('Развернуть')"
     >
       <Copy v-if="isMaximized" class="w-3 h-3 rotate-180" />
       <Square v-else class="w-3 h-3" />
@@ -68,7 +71,7 @@ onMounted(() => {
     <button
       @click="closeWindow"
       class="h-7 w-8 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-rose-600 transition-colors cursor-pointer rounded-md"
-      title="Закрыть"
+      :title='tr("Закрыть")'
     >
       <X class="w-3.5 h-3.5" />
     </button>

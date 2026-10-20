@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useI18n } from "../../i18n";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, type CSSProperties } from "vue";
 import { useAgentStore } from "../../stores/agentStore";
-import { CURATED_MODELS } from "../../utils/models";
+import { useProviderModels } from "../../composables/useProviderModels";
 import {
   Check,
   Search,
-  Zap,
   Sliders,
-  Sparkles,
   Edit3,
   X,
+  RefreshCw,
 } from "lucide-vue-next";
+
+const { tr } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -34,33 +36,72 @@ const searchQuery = ref("");
 const isCustomInputOpen = ref(false);
 const customModelInput = ref("");
 const containerRef = ref<HTMLDivElement | null>(null);
+const anchorRef = ref<HTMLElement | null>(null);
+const listRef = ref<HTMLElement | null>(null);
+const searchRef = ref<HTMLInputElement | null>(null);
+const placement = ref<CSSProperties>({ visibility: "hidden" });
+let repositionFrame = 0;
+let observer: ResizeObserver | undefined;
+let trigger: HTMLElement | null = null;
+let opensUp = true;
+function positionPanel(resetSide = false) {
+  const anchor = anchorRef.value?.parentElement;
+  if (!props.isOpen || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const gap = 6; const edge = 12;
+  const width = Math.min(280, window.innerWidth - edge * 2);
+  const below = window.innerHeight - rect.bottom - gap - edge;
+  const above = rect.top - gap - edge;
+  if (resetSide) opensUp = props.direction === "up" ? above >= 280 || above > below : below < 280 && above > below;
+  const up = opensUp;
+  const left = Math.max(edge, Math.min(props.align === "right" ? rect.right - width : rect.left, window.innerWidth - width - edge));
+  placement.value = { position: "fixed", width: `${width}px`, left: `${left}px`, height: `${Math.max(0, Math.min(300, up ? above : below))}px`,
+    ...(up ? { bottom: `${Math.max(edge, window.innerHeight - rect.top + gap)}px` } : { top: `${Math.max(edge, rect.bottom + gap)}px` }) };
+}
+function schedulePosition(event?: Event) {
+  if (!props.isOpen || (event?.target instanceof Node && containerRef.value?.contains(event.target))) return;
+  cancelAnimationFrame(repositionFrame);
+  repositionFrame = requestAnimationFrame(() => positionPanel());
+}
+function restoreFocus() {
+  if (document.activeElement === document.body || containerRef.value?.contains(document.activeElement)) trigger?.focus({ preventScroll: true });
+}
+watch(() => props.isOpen, async open => {
+  if (!open) return;
+  trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  positionPanel(true);
+  await nextTick();
+  if (props.isOpen) { positionPanel(); searchRef.value?.focus({ preventScroll: true }); }
+});
 
 const currentModel = computed(() => agentStore.config?.model || "");
 
-// Extended models list including popular open-source/groq options
-const allModels = computed(() => {
-  const models = [...CURATED_MODELS];
-  // Add common Groq & DeepSeek models if not present
-  if (!models.some((m) => m.id === "llama-3.3-70b-versatile")) {
-    models.push({
-      provider: "Groq",
-      id: "llama-3.3-70b-versatile",
-      name: "Llama 3.3 70B",
-      description: "Быстрая открытая модель с ультранизкой задержкой на Groq",
-      is_expensive: false,
+const activeProfile = computed(() => agentStore.config?.providers?.[agentStore.config?.active_provider || ""]);
+const connection = computed(() => ({ apiType: agentStore.config?.api_type, apiKeyEnv: agentStore.config?.api_key_env || '', headers: agentStore.config?.provider_headers, models: activeProfile.value?.models, baseUrl: agentStore.config?.base_url || "", apiKey: agentStore.config?.api_key || "", proxy: agentStore.config?.proxy }));
+const { models: allModels, loading, error: modelError, provider, refresh } = useProviderModels(connection, computed(() => props.isOpen));
+const saveError = ref("");
+const saving = ref(false);
+const activeModelIndex = ref(0);
+watch(searchQuery, () => { activeModelIndex.value = 0; if (listRef.value) listRef.value.scrollTop = 0; });
+function handleModelKeys(event: KeyboardEvent) {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const count = filteredModels.value.length;
+    if (!count) return;
+    activeModelIndex.value = (activeModelIndex.value + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+    void nextTick(() => {
+      const list = listRef.value, row = list?.querySelector<HTMLElement>(`[data-model-index="${activeModelIndex.value}"]`);
+      if (!list || !row) return;
+      const bounds = list.getBoundingClientRect(), rect = row.getBoundingClientRect();
+      if (rect.top < bounds.top) list.scrollTop -= bounds.top - rect.top;
+      else if (rect.bottom > bounds.bottom) list.scrollTop += rect.bottom - bounds.bottom;
     });
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const model = filteredModels.value[activeModelIndex.value];
+    if (model) void selectModel(model.id);
   }
-  if (!models.some((m) => m.id === "deepseek-chat")) {
-    models.push({
-      provider: "DeepSeek",
-      id: "deepseek-chat",
-      name: "DeepSeek V3",
-      description: "Высокоинтеллектуальная модель общего назначения от DeepSeek",
-      is_expensive: false,
-    });
-  }
-  return models;
-});
+}
 
 const filteredModels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
@@ -74,34 +115,21 @@ const filteredModels = computed(() => {
   );
 });
 
-// Group filtered models by provider
-const groupedModels = computed(() => {
-  const groups: Record<string, typeof allModels.value> = {};
-  for (const m of filteredModels.value) {
-    if (!groups[m.provider]) {
-      groups[m.provider] = [];
-    }
-    groups[m.provider].push(m);
-  }
-  return groups;
-});
-
-async function selectModel(modelId: string) {
-  try {
-    await agentStore.savePreferences({ model: modelId, mode: "manual" });
-    emit("close");
-  } catch (err) {
-    console.error("Failed to set model:", err);
-  }
+function openSettings() {
+  trigger?.focus({ preventScroll: true });
+  emit("open-settings"); emit("close");
 }
 
-async function enableMoaMode() {
+async function selectModel(modelId: string) {
+  if (saving.value) return;
+  saving.value = true;
+  saveError.value = "";
   try {
-    await agentStore.setMode("moa");
+    await agentStore.savePreferences({ model: modelId, mode: "manual", ...(allModels.value.length ? {model_catalog:allModels.value} : {}) });
     emit("close");
   } catch (err) {
-    console.error("Failed to enable MoA:", err);
-  }
+    saveError.value = String(err);
+  } finally { saving.value = false; }
 }
 
 async function submitCustomModel() {
@@ -116,173 +144,84 @@ function handleClickOutside(event: MouseEvent) {
   if (
     containerRef.value &&
     !containerRef.value.contains(event.target as Node)
+    && !anchorRef.value?.parentElement?.contains(event.target as Node)
   ) {
     emit("close");
   }
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (event.key === "Escape") {
+  if (props.isOpen && event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
     emit("close");
   }
 }
 
 onMounted(() => {
+  observer = new ResizeObserver(() => schedulePosition());
+  if (anchorRef.value?.parentElement) observer.observe(anchorRef.value.parentElement);
+  window.addEventListener("resize", schedulePosition);
+  window.addEventListener("scroll", schedulePosition, true);
   document.addEventListener("mousedown", handleClickOutside);
   document.addEventListener("keydown", handleKeyDown);
 });
 
 onUnmounted(() => {
+  observer?.disconnect();
+  cancelAnimationFrame(repositionFrame);
+  window.removeEventListener("resize", schedulePosition);
+  window.removeEventListener("scroll", schedulePosition, true);
   document.removeEventListener("mousedown", handleClickOutside);
   document.removeEventListener("keydown", handleKeyDown);
 });
 </script>
 
 <template>
-  <div
-    v-if="isOpen"
-    ref="containerRef"
-    class="absolute z-50 w-80 bg-[#101218] border border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 select-none text-zinc-100"
-    :class="[
-      direction === 'up' ? 'bottom-full mb-2' : 'top-full mt-2',
-      align === 'right' ? 'right-0' : 'left-0',
-    ]"
-    @click.stop
-  >
-    <!-- Header with Search -->
-    <div class="p-2.5 border-b border-white/[0.08] bg-white/[0.02]">
-      <div class="flex items-center justify-between mb-2 px-1">
-        <span class="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-          <Sparkles class="w-3.5 h-3.5 text-amber-400" />
-          <span>Выбор модели</span>
-        </span>
-        <button
-          @click="emit('close')"
-          class="p-1 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-colors cursor-pointer"
-        >
-          <X class="w-3 h-3" />
-        </button>
-      </div>
-
-      <!-- Quick Search Bar -->
-      <div class="relative flex items-center">
-        <Search class="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Поиск по названию или ID..."
-          class="w-full pl-8 pr-3 py-1.5 bg-[#090a0d] border border-white/[0.08] rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500/40"
-          autofocus
-        />
-      </div>
-    </div>
-
-    <!-- Switch to MoA Mode Quick Banner -->
-    <div class="p-2 border-b border-white/[0.06] bg-emerald-500/[0.04]">
-      <button
-        @click="enableMoaMode"
-        class="w-full p-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/20 text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
-      >
-        <div class="flex items-center gap-2">
-          <div class="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <Zap class="w-3.5 h-3.5 fill-current animate-pulse" />
+  <span ref="anchorRef" class="hidden" aria-hidden="true" />
+  <Teleport to="body">
+    <Transition name="popover" @after-leave="restoreFocus">
+      <div v-if="isOpen" ref="containerRef" :style="placement" role="dialog" :aria-label='tr("Выбор модели")'
+        class="model-popover floating-menu z-[110] flex flex-col overflow-hidden text-zinc-200" @click.stop>
+        <div class="px-3 pt-3 pb-2.5 shrink-0 border-b border-white/[0.06]">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="text-[10px] font-medium tracking-wide text-zinc-500 truncate">{{ activeProfile?.name || provider?.name || tr("Модели") }}</span>
+            <button @click="refresh" :disabled="loading" :aria-label="tr('Обновить модели')" :title="tr('Обновить модели')" class="ml-auto p-1 text-zinc-500 hover:text-zinc-200 cursor-pointer disabled:opacity-40"><RefreshCw class="w-3 h-3" :class="{ 'animate-spin motion-reduce:animate-none': loading }" /></button>
+            <button @click="emit('close')" :aria-label='tr("Закрыть выбор модели")' class="p-1 rounded text-zinc-500 hover:text-zinc-200 cursor-pointer"><X class="w-3 h-3" /></button>
           </div>
-          <div>
-            <div class="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-              <span>Включить Takiza MoA</span>
-              <span class="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-200">
-                ⚡ ~45%
-              </span>
-            </div>
-            <p class="text-[10px] text-zinc-400">Авто-роутинг моделей под сложность задачи</p>
+          <div class="relative flex items-center">
+            <Search class="w-3 h-3 absolute left-2 text-zinc-500 pointer-events-none" />
+            <input ref="searchRef" v-model="searchQuery" :aria-label='tr("Поиск модели")' :placeholder='tr("Поиск модели…")'
+              @keydown="handleModelKeys" role="combobox" aria-autocomplete="list" aria-controls="provider-model-options" aria-expanded="true"
+              :aria-activedescendant="filteredModels[activeModelIndex] ? `provider-model-option-${activeModelIndex}` : undefined"
+              class="w-full pl-7 pr-2 py-2 bg-black/20 border border-white/[0.04] rounded-lg text-xs text-zinc-200 placeholder-zinc-600" />
           </div>
         </div>
-      </button>
-    </div>
-
-    <!-- Models Scrollable List -->
-    <div class="p-2 space-y-3 overflow-y-auto max-h-72">
-      <div v-for="(models, provider) in groupedModels" :key="provider" class="space-y-1">
-        <!-- Provider Category Title -->
-        <div class="px-2 text-[10px] font-mono uppercase tracking-wider text-zinc-500 font-semibold">
-          {{ provider }}
-        </div>
-
-        <!-- Model Items -->
-        <div class="space-y-0.5">
-          <button
-            v-for="m in models"
-            :key="m.id"
-            @click="selectModel(m.id)"
-            class="w-full text-left px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 group"
-            :class="
-              currentModel === m.id
-                ? 'bg-amber-500/15 border-amber-500/30 text-amber-200 shadow-xs'
-                : 'border-transparent hover:bg-white/[0.05] text-zinc-300 hover:text-white'
-            "
-          >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                <span class="text-xs font-medium truncate">{{ m.name }}</span>
-                <span
-                  v-if="m.is_expensive"
-                  class="text-[9px] font-mono px-1 py-0.1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                >
-                  Exp
-                </span>
-              </div>
-              <div class="text-[10px] font-mono text-zinc-500 truncate">
-                {{ m.id }}
-              </div>
-            </div>
-
-            <!-- Active Indicator -->
-            <Check v-if="currentModel === m.id" class="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <div ref="listRef" class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5" role="listbox" id="provider-model-options" :aria-label="tr('Модели')">
+          <p v-if="loading" role="status" class="p-2 text-xs text-zinc-500">{{ tr("Загрузка…") }}</p>
+          <p v-if="modelError" role="status" class="p-2 text-xs text-zinc-400 break-words">{{ tr(modelError) }} <button @click="refresh" class="underline cursor-pointer">{{ tr("Повторить") }}</button></p>
+          <p v-if="saveError" role="alert" class="p-2 text-xs text-rose-300 break-words">{{ tr(saveError) }}</p>
+          <button v-for="(model, index) in filteredModels" :key="model.id" :disabled="saving" @mousedown.prevent @click="selectModel(model.id)"
+            :id="`provider-model-option-${index}`" :data-model-index="index" role="option" tabindex="-1"
+            :title="model.id" :aria-selected="currentModel === model.id" @pointermove="activeModelIndex = index"
+            class="select-option" :class="{ 'select-option-active': activeModelIndex === index }">
+            <span class="min-w-0 flex-1">
+              <span class="block truncate">{{ model.name }}</span>
+              <span v-if="model.name !== model.id" class="block truncate text-[10px] text-zinc-500">{{ model.id }}</span>
+            </span>
+            <Check v-if="currentModel === model.id" class="w-3.5 h-3.5 shrink-0 text-amber-300" />
           </button>
+          <p v-if="!loading && !modelError && !filteredModels.length" class="p-3 text-xs text-zinc-500">{{ tr("Модели не найдены") }}</p>
+        </div>
+        <form v-if="isCustomInputOpen" @submit.prevent="submitCustomModel" class="flex items-center gap-2 px-2 py-2 border-t border-white/[0.06] shrink-0">
+          <input v-model="customModelInput" :aria-label='tr("ID модели")' :placeholder='tr("ID модели")' class="min-w-0 flex-1 bg-white/[0.03] rounded-md p-1.5 text-xs" />
+          <button :disabled="saving || !customModelInput.trim()" class="text-xs text-zinc-300 cursor-pointer disabled:opacity-40">{{ tr("ОК") }}</button>
+        </form>
+        <div class="flex items-center justify-between px-2 py-1.5 border-t border-white/[0.06] shrink-0">
+          <button @click="isCustomInputOpen = !isCustomInputOpen; nextTick(positionPanel)" class="flex items-center gap-1 p-1 text-[10px] text-zinc-500 hover:text-zinc-200 cursor-pointer"><Edit3 class="w-3 h-3" />{{ tr("Ввести ID") }}</button>
+          <button @click="openSettings" class="flex items-center gap-1 p-1 text-[10px] text-zinc-500 hover:text-zinc-200 cursor-pointer"><Sliders class="w-3 h-3" />{{ tr("Настройки") }}</button>
         </div>
       </div>
-
-      <div v-if="filteredModels.length === 0" class="text-center py-4 text-xs text-zinc-500 font-mono">
-        Модели не найдены
-      </div>
-    </div>
-
-    <!-- Custom Model Input Section -->
-    <div v-if="isCustomInputOpen" class="p-2 border-t border-white/[0.08] bg-[#0c0e12] space-y-2">
-      <div class="text-[11px] text-zinc-400">Введите Model ID:</div>
-      <div class="flex items-center gap-1.5">
-        <input
-          v-model="customModelInput"
-          @keydown.enter="submitCustomModel"
-          placeholder="например: anthropic/claude-3-7-sonnet"
-          class="flex-1 px-2 py-1.5 bg-[#090a0d] border border-white/[0.1] rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-amber-400/50"
-        />
-        <button
-          @click="submitCustomModel"
-          class="px-2.5 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-medium text-xs hover:bg-amber-400 transition-colors cursor-pointer"
-        >
-          ОК
-        </button>
-      </div>
-    </div>
-
-    <!-- Context Menu Footer -->
-    <div class="p-2 border-t border-white/[0.08] bg-white/[0.01] flex items-center justify-between text-xs text-zinc-400">
-      <button
-        @click="isCustomInputOpen = !isCustomInputOpen"
-        class="flex items-center gap-1 px-2 py-1 rounded-lg hover:text-zinc-200 hover:bg-white/[0.06] transition-colors cursor-pointer text-[11px]"
-      >
-        <Edit3 class="w-3 h-3" />
-        <span>{{ isCustomInputOpen ? "Скрыть ввод" : "Ввести ID..." }}</span>
-      </button>
-
-      <button
-        @click="emit('open-settings'); emit('close');"
-        class="flex items-center gap-1 px-2 py-1 rounded-lg hover:text-zinc-200 hover:bg-white/[0.06] transition-colors cursor-pointer text-[11px]"
-      >
-        <Sliders class="w-3 h-3" />
-        <span>Все настройки...</span>
-      </button>
-    </div>
-  </div>
+    </Transition>
+  </Teleport>
 </template>

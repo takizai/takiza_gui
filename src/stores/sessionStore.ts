@@ -7,15 +7,18 @@ import { useAgentStore } from "./agentStore";
 export const useSessionStore = defineStore("sessions", () => {
   const sessions = ref<SessionMeta[]>([]);
   const isLoading = ref(false);
+  let generation = 0;
 
   async function fetchSessions() {
+    const request = ++generation;
     isLoading.value = true;
     try {
-      sessions.value = await invoke<SessionMeta[]>("get_sessions");
+      const result = await invoke<SessionMeta[]>("get_sessions");
+      if (request === generation) sessions.value = result;
     } catch (e) {
       console.error("Failed to load sessions:", e);
     } finally {
-      isLoading.value = false;
+      if (request === generation) isLoading.value = false;
     }
   }
 
@@ -27,9 +30,8 @@ export const useSessionStore = defineStore("sessions", () => {
 
   async function newSession() {
     const agentStore = useAgentStore();
-    agentStore.currentSession = null;
     try {
-      await invoke("new_session");
+      await agentStore.createNewSession();
     } catch (e) {
       console.error("Failed to reset agent for new session:", e);
     }
@@ -38,9 +40,9 @@ export const useSessionStore = defineStore("sessions", () => {
 
   async function deleteSession(id: string) {
     try {
-      const nextSession = await invoke<Session | null>("delete_session", { id });
-      await fetchSessions();
       const agentStore = useAgentStore();
+      const nextSession = await agentStore.withIdleOperation(() => invoke<Session | null>("delete_session", { id }));
+      await fetchSessions();
       if (agentStore.currentSession?.id === id) {
         agentStore.currentSession = nextSession;
       }

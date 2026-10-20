@@ -1,27 +1,19 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { useI18n } from "../../i18n";
+import BaseModal from "../common/BaseModal.vue";
+import BaseSelect from "../common/BaseSelect.vue";
+import ProviderConnectionFields from "../common/ProviderConnectionFields.vue";
+import { ref, watch, computed, nextTick } from "vue";
+import { reasoningEfforts } from "../../utils/effort";
+import { normalizeTheme } from "../../utils/theme";
 import { useAgentStore } from "../../stores/agentStore";
-import { CURATED_MODELS, THEME_OPTIONS } from "../../utils/models";
-import type { AppMode, ThemeName } from "../../types";
-import {
-  X,
-  Save,
-  Eye,
-  EyeOff,
-  Check,
-  RotateCcw,
-  Sliders,
-  Key,
-  FolderGit2,
-  Zap,
-  Palette,
-  Sparkles,
-  Bot,
-  Brain,
-  ShieldAlert,
-  ShieldCheck,
-  CheckCircle2,
-} from "lucide-vue-next";
+import { THEME_OPTIONS } from "../../utils/models";
+import { PROVIDERS, providerForUrl } from "../../utils/providers";
+import { useProviderModels } from "../../composables/useProviderModels";
+import type { ThemeName, Language, ApiType, CredentialSource, HeaderEntry, AppPreferences } from "../../types";
+import { Plus, ChevronRight, RefreshCw, Pencil, Check, LoaderCircle } from 'lucide-vue-next';
+
+const { tr, locale, setLocale } = useI18n();
 
 const props = defineProps<{
   isOpen: boolean;
@@ -33,641 +25,316 @@ const emit = defineEmits<{
 
 const agentStore = useAgentStore();
 
-const activeTab = ref<"models" | "mode" | "appearance" | "general" | "inherited">("models");
+const activeTab = ref<'connection' | 'appearance' | 'agent'>('connection');
+const connectionExpanded = ref(false);
+const manualModel = ref(false);
+const selectedPreset = ref('');
+const initialConnection = ref('');
+const initialAgent = ref('');
 
 const provider = ref("custom");
+const selectedProfile = ref("");
+const addingProvider = ref(false);
+const newProviderName = ref("");
+const providerNameInput = ref<HTMLInputElement | null>(null);
+const apiType = ref<ApiType>('chat_completions');
+const credentialSource = ref<CredentialSource>('key');
+const keyEnv = ref('');
+const headerRows = ref<HeaderEntry[]>([]);
+const effectiveEnv = computed(() => credentialSource.value === 'env' ? keyEnv.value.trim() : '');
+const effectiveKey = computed(() => credentialSource.value === 'key' ? apiKey.value.trim() : '');
+const connectionHeaders = computed(() => Object.fromEntries(headerRows.value.filter(row => row.name.trim()).map(row => [row.name.trim(), row.value])));
+function loadTransport(profile: {api_type?: ApiType; api_key_env?: string | null; headers?: Record<string,string>}, key: string) {
+  apiType.value = profile.api_type || 'chat_completions';
+  keyEnv.value = profile.api_key_env || '';
+  credentialSource.value = keyEnv.value ? 'env' : key ? 'key' : 'none';
+  headerRows.value = Object.entries(profile.headers || {}).map(([name,value]) => ({name,value}));
+}
+function resetTransport(type: ApiType = 'chat_completions') {
+  apiType.value = type; credentialSource.value = 'key'; keyEnv.value = ''; headerRows.value = [];
+}
+let previousConnection: { selectedProfile: string; baseUrl: string; model: string; apiKey: string; provider: string; apiType: ApiType; credentialSource: CredentialSource; keyEnv: string; headers: HeaderEntry[] } | undefined;
+async function startAddingProvider() {
+  if (isSaving.value || addingProvider.value) return;
+  previousConnection = { selectedProfile: selectedProfile.value, baseUrl: baseUrl.value, model: model.value, apiKey: apiKey.value, provider: provider.value, apiType: apiType.value, credentialSource: credentialSource.value, keyEnv: keyEnv.value, headers: headerRows.value.map(row => ({...row})) };
+  addingProvider.value = true; resetTransport(); connectionExpanded.value = true; manualModel.value = false; selectedPreset.value = '';
+  selectedProfile.value = ""; baseUrl.value = ""; model.value = ""; apiKey.value = ""; provider.value = "custom";
+  newProviderName.value = ""; saveError.value = "";
+  activeTab.value = "connection";
+  await nextTick(); providerNameInput.value?.focus();
+}
+function cancelAddingProvider() {
+  if (isSaving.value) return;
+  addingProvider.value = false;
+  if (previousConnection) {
+    selectedProfile.value = previousConnection.selectedProfile; baseUrl.value = previousConnection.baseUrl;
+    model.value = previousConnection.model; apiKey.value = previousConnection.apiKey; provider.value = previousConnection.provider;
+    apiType.value = previousConnection.apiType; credentialSource.value = previousConnection.credentialSource; keyEnv.value = previousConnection.keyEnv; headerRows.value = previousConnection.headers;
+  }
+  previousConnection = undefined; newProviderName.value = ""; saveError.value = ""; connectionExpanded.value = false;
+}
+const savedProfiles = computed(() => agentStore.config?.providers || {});
+const profileOptions = computed(() => Object.entries(savedProfiles.value).map(([id, profile]) => ({ value: id, label: profile.name || id, description: profile.base_url })));
+const languageOptions = [{ value: 'ru', label: 'Русский' }, { value: 'en', label: 'English' }, { value: 'zh', label: '简体中文' }];
+function selectSavedProfile(id: string) {
+  if (isSaving.value) return;
+  const profile = savedProfiles.value[id];
+  if (!profile) return;
+  addingProvider.value = false; connectionExpanded.value = false; manualModel.value = false; saveError.value = '';
+  selectedProfile.value = id;
+  baseUrl.value = profile.base_url;
+  model.value = profile.model;
+  apiKey.value = profile.api_key_env ? "" : profile.api_key || "";
+  loadTransport(profile, apiKey.value);
+  provider.value = providerForUrl(profile.base_url)?.id || "custom";
+}
+
 const baseUrl = ref("");
 const model = ref("");
 const apiKey = ref("");
 const proxy = ref("");
 const autoApprove = ref(false);
-const effort = ref("medium");
-const currentMode = ref<AppMode>("manual");
+const effort = ref("");
+const maxSteps = ref(100);
 const currentTheme = ref<ThemeName>("amber");
 
-const showApiKey = ref(false);
-const saveSuccess = ref(false);
 const isSaving = ref(false);
+const saveError = ref("");
 
-const presets = [
-  {
-    id: "anymodel",
-    name: "AnyModel (По умолчанию)",
-    url: "https://anymodel.org/v1",
-    model: "cc/claude-sonnet-5",
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    url: "https://api.openai.com/v1",
-    model: "cx/gpt-6-astra",
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    url: "https://api.anthropic.com/v1",
-    model: "cc/claude-sonnet-5",
-  },
-  {
-    id: "google",
-    name: "Google AI",
-    url: "https://generativelanguage.googleapis.com/v1beta/openai",
-    model: "ag/gemini-3.7-flash-high",
-  },
-  {
-    id: "moonshot",
-    name: "Moonshot AI",
-    url: "https://api.moonshot.cn/v1",
-    model: "kmc/k3",
-  },
-  {
-    id: "groq",
-    name: "Groq",
-    url: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile",
-  },
-  {
-    id: "openrouter",
-    name: "OpenRouter",
-    url: "https://openrouter.ai/api/v1",
-    model: "anthropic/claude-3.5-sonnet",
-  },
-  {
-    id: "ollama",
-    name: "Ollama (Local)",
-    url: "http://localhost:11434/v1",
-    model: "qwen2.5-coder:latest",
-  },
-];
+const draftProfile = computed(() => {
+  const profile = savedProfiles.value[selectedProfile.value];
+  if (!profile || profile.base_url.replace(/\/+$/, '') !== baseUrl.value.replace(/\/+$/, '')
+    || (profile.api_type || 'chat_completions') !== apiType.value || (profile.api_key_env || '') !== effectiveEnv.value
+    || (!effectiveEnv.value && (profile.api_key || '') !== effectiveKey.value)
+    || JSON.stringify(Object.entries(profile.headers || {}).sort()) !== JSON.stringify(Object.entries(connectionHeaders.value).sort())) return undefined;
+  return profile;
+});
+const connection = computed(() => ({ baseUrl: baseUrl.value, apiKey: effectiveKey.value, apiType: apiType.value, apiKeyEnv: effectiveEnv.value, headers: connectionHeaders.value, proxy: proxy.value, models: draftProfile.value?.models }));
+const { models: providerModels, loading: modelsLoading, error: modelsError, refresh: refreshModels } = useProviderModels(connection, computed(() => props.isOpen && activeTab.value === "connection"), false);
 
-function selectCuratedModel(curatedId: string) {
-  model.value = curatedId;
-}
-
-function applyPreset(p: typeof presets[0]) {
+function applyPreset(p: (typeof PROVIDERS)[number]) {
+  if (isSaving.value) return;
+  if (addingProvider.value) {
+    if (baseUrl.value.replace(/\/+$/, "") !== p.url) { apiKey.value = ""; model.value = ""; }
+    resetTransport(p.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions');
+    provider.value = p.id; baseUrl.value = p.url;
+    if (!newProviderName.value.trim()) newProviderName.value = p.name;
+    return;
+  }
+  const saved = Object.entries(savedProfiles.value).find(([, profile]) => profile.base_url.replace(/\/+$/, "") === p.url);
+  if (saved) { selectSavedProfile(saved[0]); return; }
+  if (baseUrl.value.replace(/\/+$/, "") === p.url) return;
+  selectedProfile.value = "";
+  apiKey.value = "";
   provider.value = p.id;
   baseUrl.value = p.url;
-  model.value = p.model;
+  resetTransport(p.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions');
+  model.value = "";
 }
 
-watch(
-  () => props.isOpen,
-  (open) => {
-    if (open && agentStore.config) {
-      baseUrl.value = agentStore.config.base_url;
-      model.value = agentStore.config.model;
-      apiKey.value = agentStore.config.api_key;
-      proxy.value = agentStore.config.proxy || "";
-      autoApprove.value = agentStore.config.auto_approve;
-      effort.value = agentStore.config.effort || "medium";
-      currentMode.value = (agentStore.config.mode as AppMode) || "manual";
-      currentTheme.value = (agentStore.config.theme as ThemeName) || "amber";
+const connectionSnapshot = computed(() => JSON.stringify([selectedProfile.value, baseUrl.value.trim(), model.value.trim(), effectiveKey.value,
+  effectiveEnv.value, apiType.value, Object.entries(connectionHeaders.value).sort()]));
+const agentSnapshot = computed(() => JSON.stringify([proxy.value.trim(), autoApprove.value, effort.value, maxSteps.value]));
+const connectionDirty = computed(() => addingProvider.value || connectionSnapshot.value !== initialConnection.value);
+const agentDirty = computed(() => agentSnapshot.value !== initialAgent.value);
+const hasPendingChanges = computed(() => connectionDirty.value || agentDirty.value);
+const presetOptions = computed(() => PROVIDERS.map(p => ({ value: p.id, label: p.name })));
+const modelOptions = computed(() => {
+  const options = providerModels.value.map(item => ({value:item.id,label:item.name || item.id,description:item.name && item.name !== item.id ? item.id : undefined}));
+  if (model.value && !options.some(option => option.value === model.value)) options.unshift({value:model.value,label:model.value,description:undefined});
+  return options;
+});
+const availableEfforts = computed(() => reasoningEfforts(model.value, apiType.value, providerModels.value.find(item => item.id === model.value)));
+const effortOptions = computed(() => [{value:'',label:tr('Автоматически')}, ...availableEfforts.value.map(value => ({value,label:value}))]);
+const selectedEffort = computed({get: () => availableEfforts.value.includes(effort.value as import('../../types').ReasoningEffort) ? effort.value : '',set: (value: string) => {effort.value = value;}});
+const protocolLabel = computed(() => apiType.value === 'anthropic_messages' ? 'Anthropic Messages' : apiType.value === 'openai_responses' ? 'OpenAI Responses' : 'Chat Completions');
+function choosePreset(id: string) {
+  const preset = PROVIDERS.find(item => item.id === id);
+  if (preset) { selectedPreset.value = id; applyPreset(preset); }
+}
+function loadDraft() {
+  const config = agentStore.config;
+  if (!config) return;
+  addingProvider.value = false; newProviderName.value = ''; previousConnection = undefined; saveError.value = '';
+  selectedProfile.value = config.active_provider || '';
+  baseUrl.value = config.base_url; model.value = config.model; apiKey.value = config.api_key_env ? '' : config.api_key;
+  loadTransport({api_type:config.api_type,api_key_env:config.api_key_env,headers:config.provider_headers},apiKey.value);
+  proxy.value = config.proxy || ''; autoApprove.value = config.auto_approve; effort.value = config.effort || '';
+  maxSteps.value = config.max_steps ?? 100; currentTheme.value = normalizeTheme(config.theme);
+  provider.value = providerForUrl(config.base_url)?.id || 'custom';
+  connectionExpanded.value = !config.base_url; manualModel.value = false; selectedPreset.value = '';
+  initialConnection.value = connectionSnapshot.value; initialAgent.value = agentSnapshot.value;
+}
 
-      const found = presets.find((p) => p.url === agentStore.config?.base_url);
-      provider.value = found ? found.id : "custom";
-      saveSuccess.value = false;
-    }
+watch(() => props.isOpen, open => { if (open) loadDraft(); }, { immediate: true });
+
+const languageSaving = ref(false);
+const themeSaving = ref(false);
+const uiBusy = computed(() => isSaving.value || languageSaving.value || themeSaving.value);
+const appearanceStatus = ref('');
+async function selectLanguage(value: string) {
+  if (uiBusy.value) return;
+  languageSaving.value = true; saveError.value = ''; appearanceStatus.value = '';
+  try {
+    const language = value as Language;
+    await agentStore.setLanguage(language);
+    await setLocale(language); appearanceStatus.value = tr('Сохранено');
   }
-);
+  catch { saveError.value = tr("Не удалось сохранить язык"); }
+  finally { languageSaving.value = false; }
+}
 
 async function selectTheme(themeId: string) {
-  currentTheme.value = themeId as ThemeName;
-  try {
-    await agentStore.setTheme(themeId as ThemeName);
-  } catch (e) {
-    console.error("Failed to set theme:", e);
-  }
-}
-
-async function selectMode(modeId: AppMode) {
-  currentMode.value = modeId;
-  try {
-    await agentStore.setMode(modeId);
-  } catch (e) {
-    console.error("Failed to set mode:", e);
-  }
+  if (uiBusy.value || themeId === currentTheme.value) return;
+  const previousTheme = currentTheme.value;
+  currentTheme.value = themeId as ThemeName; themeSaving.value = true; saveError.value = ''; appearanceStatus.value = '';
+  try { await agentStore.setTheme(themeId as ThemeName); appearanceStatus.value = tr('Сохранено'); }
+  catch { currentTheme.value = previousTheme; saveError.value = tr('Не удалось сохранить тему'); }
+  finally { themeSaving.value = false; }
 }
 
 async function handleSave() {
+  if (uiBusy.value) return;
+  if (!hasPendingChanges.value) { emit('close'); return; }
   isSaving.value = true;
-  saveSuccess.value = false;
+
+  saveError.value = "";
   try {
-    await agentStore.savePreferences({
-      base_url: baseUrl.value.trim(),
-      model: model.value.trim(),
-      api_key: apiKey.value.trim(),
-      proxy: proxy.value.trim() ? proxy.value.trim() : undefined,
-      auto_approve: autoApprove.value,
-      effort: effort.value,
-      mode: currentMode.value,
-      theme: currentTheme.value,
+    const prefs: AppPreferences = {};
+    if (connectionDirty.value) {
+    if (addingProvider.value && !newProviderName.value.trim()) throw new Error(tr("Укажите название провайдера."));
+    if (!baseUrl.value.trim() || !model.value.trim()) throw new Error(tr("Укажите URL провайдера и ID модели."));
+    {
+      let endpoint: URL;
+      try { endpoint = new URL(baseUrl.value.trim()); } catch { throw new Error(tr("Укажите корректный HTTP или HTTPS адрес API.")); }
+      if (!['http:', 'https:'].includes(endpoint.protocol) || !endpoint.hostname) throw new Error(tr("Укажите корректный HTTP или HTTPS адрес API."));
+    }
+    if (credentialSource.value === 'env' && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(effectiveEnv.value)) throw new Error(tr('Некорректное имя переменной окружения.'));
+    const headerNames = new Set<string>();
+    for (const row of headerRows.value) {
+      if (!row.name.trim() && !row.value) continue;
+      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(row.name.trim())) throw new Error(tr('Некорректное имя HTTP-заголовка.'));
+      if (/[^\t\x20-\x7e\x80-\xff]/.test(row.value)) throw new Error(tr('Некорректное значение HTTP-заголовка.'));
+      const normalized = row.name.trim().toLowerCase();
+      if (headerNames.has(normalized)) throw new Error(tr('HTTP-заголовки не должны повторяться.'));
+      headerNames.add(normalized);
+    }
+    Object.assign(prefs, {
+      ...(addingProvider.value ? { new_provider_name: newProviderName.value.trim() } : selectedProfile.value ? { active_provider: selectedProfile.value } : {}),
+      base_url: baseUrl.value.trim(), model: model.value.trim(), api_key: effectiveKey.value,
+      api_key_env: effectiveEnv.value, api_type: apiType.value, headers: connectionHeaders.value,
     });
-    saveSuccess.value = true;
-    setTimeout(() => {
-      saveSuccess.value = false;
-      emit("close");
-    }, 600);
+    }
+    if (agentDirty.value) {
+      if (!Number.isInteger(maxSteps.value) || maxSteps.value < 0) throw new Error(tr('Лимит шагов должен быть целым числом от 0.'));
+      Object.assign(prefs,{max_steps:maxSteps.value,proxy:proxy.value.trim(),auto_approve:autoApprove.value,...(availableEfforts.value.length ? {effort:selectedEffort.value} : {})});
+    }
+    if (providerModels.value.length && (connectionDirty.value || agentDirty.value)) prefs.model_catalog = providerModels.value;
+    await agentStore.savePreferences(prefs);
+    if (addingProvider.value) {
+      addingProvider.value = false; previousConnection = undefined; newProviderName.value = "";
+      selectedProfile.value = agentStore.config?.active_provider || "";
+    }
+    initialConnection.value = connectionSnapshot.value; initialAgent.value = agentSnapshot.value;
+    emit('close');
   } catch (e) {
-    console.error("Failed to save preferences:", e);
+    saveError.value = e instanceof Error ? e.message : tr(String(e));
   } finally {
     isSaving.value = false;
   }
 }
 
-async function handleResetToHarness() {
-  isSaving.value = true;
-  try {
-    await agentStore.resetToHarnessDefaults();
-    if (agentStore.config) {
-      baseUrl.value = agentStore.config.base_url;
-      model.value = agentStore.config.model;
-      apiKey.value = agentStore.config.api_key;
-      proxy.value = agentStore.config.proxy || "";
-      autoApprove.value = agentStore.config.auto_approve;
-      currentMode.value = (agentStore.config.mode as AppMode) || "manual";
-      currentTheme.value = (agentStore.config.theme as ThemeName) || "amber";
-      const found = presets.find((p) => p.url === agentStore.config?.base_url);
-      provider.value = found ? found.id : "custom";
-    }
-    saveSuccess.value = true;
-    setTimeout(() => {
-      saveSuccess.value = false;
-    }, 1200);
-  } catch (e) {
-    console.error("Failed to reset to harness defaults:", e);
-  } finally {
-    isSaving.value = false;
-  }
-}
 </script>
 
 <template>
-  <div
-    v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
-    @click.self="emit('close')"
-  >
-    <div
-      class="w-full max-w-2xl bg-[#0e1015] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 select-none"
-    >
-      <!-- Modal Header -->
-      <div class="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
-        <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400">
-            <Sliders class="w-4 h-4" />
+  <BaseModal :is-open="isOpen" :title="tr('Настройки')" size="lg" panel-class="settings-modal" :dismissible="!uiBusy" @close="emit('close')">
+    <nav :inert="uiBusy" class="settings-tabs" :aria-label="tr('Разделы настроек')">
+      <button v-for="tab in [{id:'connection',label:tr('Подключение')},{id:'appearance',label:tr('Оформление')},{id:'agent',label:tr('Агент')}]" :key="tab.id"
+        type="button" :aria-current="activeTab === tab.id ? 'page' : undefined" :class="{'settings-tab-active':activeTab === tab.id}"
+        @click="activeTab = tab.id as typeof activeTab">{{ tab.label }}</button>
+    </nav>
+    <div class="modal-scroll settings-content" :inert="uiBusy" :aria-busy="uiBusy">
+      <div v-if="activeTab === 'connection'" class="space-y-6">
+        <div>
+          <div class="settings-label-row">
+            <label :for="addingProvider ? 'new-provider-name' : 'saved-provider'">{{ addingProvider ? tr('Новый провайдер') : tr('Провайдер') }}</label>
+            <button v-if="!addingProvider" type="button" @click="startAddingProvider" class="settings-text-action" :aria-label="tr('Добавить провайдера')"><Plus class="w-3.5 h-3.5" />{{ tr('Добавить') }}</button>
+            <button v-else type="button" @click="cancelAddingProvider" class="settings-text-action">{{ tr('Отменить добавление') }}</button>
           </div>
-          <div>
-            <h2 class="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <span>Настройки Takiza</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">
-                GUI & TUI Synced
-              </span>
-            </h2>
-            <p class="text-[11px] text-zinc-400">Конфигурация синхронизирована с ~/.config/takiza/config.json</p>
-          </div>
+          <input v-if="addingProvider" id="new-provider-name" ref="providerNameInput" v-model="newProviderName" :placeholder="tr('Название провайдера')" autocomplete="off" class="settings-input" />
+          <BaseSelect v-else-if="profileOptions.length" id="saved-provider" :model-value="selectedProfile" :options="profileOptions" searchable :placeholder="tr('Выберите профиль')" class="w-full" @update:model-value="selectSavedProfile" />
+          <p v-else class="text-xs text-zinc-500">{{ tr('Текущее подключение') }}</p>
         </div>
 
-        <button
-          @click="emit('close')"
-          class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06] transition-colors cursor-pointer"
-        >
-          <X class="w-4 h-4" />
-        </button>
+        <div v-if="addingProvider" class="space-y-4">
+          <details class="settings-disclosure"><summary><ChevronRight class="w-3 h-3" />{{ tr('Заполнить из пресета') }}</summary>
+            <BaseSelect id="provider-preset" :model-value="selectedPreset" :options="presetOptions" :placeholder="tr('Выбрать пресет')" class="w-full mt-3" @update:model-value="choosePreset" />
+          </details>
+          <ProviderConnectionFields v-model:base-url="baseUrl" v-model:api-key="apiKey" v-model:api-type="apiType" v-model:credential-source="credentialSource" v-model:key-env="keyEnv" v-model:headers="headerRows" />
+        </div>
+        <div v-else>
+          <button type="button" @click="connectionExpanded = !connectionExpanded" :aria-expanded="connectionExpanded" class="settings-connection-toggle">
+            <span><span class="block text-xs text-zinc-300">{{ tr('Параметры подключения') }}</span><span class="block text-[10px] text-zinc-500 mt-1">{{ protocolLabel }}</span></span>
+            <ChevronRight class="w-3.5 h-3.5 text-zinc-500 transition-transform" :class="{'rotate-90':connectionExpanded}" />
+          </button>
+          <ProviderConnectionFields v-if="connectionExpanded" class="mt-4" v-model:base-url="baseUrl" v-model:api-key="apiKey" v-model:api-type="apiType" v-model:credential-source="credentialSource" v-model:key-env="keyEnv" v-model:headers="headerRows" />
+        </div>
+
+        <div class="settings-model-field">
+          <div class="settings-label-row">
+            <label :for="manualModel ? 'settings-model-id' : 'settings-model'">{{ tr('Модель') }}</label>
+            <div class="flex items-center gap-3">
+              <button type="button" @click="manualModel = !manualModel" class="settings-text-action" :aria-pressed="manualModel"><Pencil class="w-3 h-3" />{{ manualModel ? tr('Выбрать из списка') : tr('Ввести ID') }}</button>
+              <button type="button" @click="refreshModels" :disabled="modelsLoading || !baseUrl.trim()" class="settings-text-action" :aria-label="tr('Загрузить модели провайдера')" :title="tr('Обновить модели')"><RefreshCw class="w-3 h-3" :class="{'animate-spin motion-reduce:animate-none':modelsLoading}" />{{ modelsLoading ? tr('Загрузка…') : tr('Обновить') }}</button>
+            </div>
+          </div>
+          <input v-if="manualModel" id="settings-model-id" v-model="model" :placeholder="tr('ID модели у выбранного провайдера')" class="settings-input font-mono" spellcheck="false" />
+          <BaseSelect v-else id="settings-model" v-model="model" :options="modelOptions" :disabled="modelsLoading || !modelOptions.length" searchable
+            :placeholder="modelsLoading ? tr('Загрузка…') : tr('Загрузите список или введите ID')" class="w-full" />
+          <p v-if="modelsError" role="status" class="mt-2 text-[11px] text-rose-300">{{ tr(modelsError) }}</p>
+          <p v-else class="mt-2 text-[10px] text-zinc-600">{{ tr('Модели текущего провайдера. Можно указать ID вручную.') }}</p>
+        </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="flex items-center gap-1 px-5 border-b border-white/[0.06] bg-white/[0.01]">
-        <button
-          @click="activeTab = 'models'"
-          class="px-3 py-2.5 text-xs font-medium border-b-2 transition-all cursor-pointer flex items-center gap-1.5"
-          :class="
-            activeTab === 'models'
-              ? 'border-amber-400 text-amber-300'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          "
-        >
-          <Bot class="w-3.5 h-3.5" />
-          <span>Модели</span>
-        </button>
-
-        <button
-          @click="activeTab = 'mode'"
-          class="px-3 py-2.5 text-xs font-medium border-b-2 transition-all cursor-pointer flex items-center gap-1.5"
-          :class="
-            activeTab === 'mode'
-              ? 'border-amber-400 text-amber-300'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          "
-        >
-          <Zap class="w-3.5 h-3.5" />
-          <span>Режим (MoA / Manual)</span>
-        </button>
-
-        <button
-          @click="activeTab = 'appearance'"
-          class="px-3 py-2.5 text-xs font-medium border-b-2 transition-all cursor-pointer flex items-center gap-1.5"
-          :class="
-            activeTab === 'appearance'
-              ? 'border-amber-400 text-amber-300'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          "
-        >
-          <Palette class="w-3.5 h-3.5" />
-          <span>Темы</span>
-        </button>
-
-        <button
-          @click="activeTab = 'general'"
-          class="px-3 py-2.5 text-xs font-medium border-b-2 transition-all cursor-pointer flex items-center gap-1.5"
-          :class="
-            activeTab === 'general'
-              ? 'border-amber-400 text-amber-300'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          "
-        >
-          <Key class="w-3.5 h-3.5" />
-          <span>API & Безопасность</span>
-        </button>
-
-        <button
-          @click="activeTab = 'inherited'"
-          class="px-3 py-2.5 text-xs font-medium border-b-2 transition-all cursor-pointer flex items-center gap-1.5"
-          :class="
-            activeTab === 'inherited'
-              ? 'border-amber-400 text-amber-300'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          "
-        >
-          <FolderGit2 class="w-3.5 h-3.5" />
-          <span>Harness Env</span>
-        </button>
-      </div>
-
-      <!-- Tab Content Area -->
-      <div class="p-5 overflow-y-auto space-y-4 max-h-[62vh]">
-        <!-- TAB 1: CURATED & CUSTOM MODELS -->
-        <div v-if="activeTab === 'models'" class="space-y-4">
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                <Sparkles class="w-3.5 h-3.5 text-amber-400" />
-                <span>Каталог фронтирных моделей (Curated Frontier Catalog)</span>
-              </label>
-              <span class="text-[10px] text-zinc-500 font-mono">Из TUI</span>
-            </div>
-            <p class="text-[11px] text-zinc-400 mb-2.5">
-              Выберите передовую модель для решения инженерных задач:
-            </p>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div
-                v-for="m in CURATED_MODELS"
-                :key="m.id"
-                @click="selectCuratedModel(m.id)"
-                class="p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group relative"
-                :class="
-                  model === m.id
-                    ? 'bg-amber-500/10 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.08)]'
-                    : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]'
-                "
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-xs font-semibold text-zinc-100 group-hover:text-amber-300 transition-colors">
-                      {{ m.name }}
-                    </span>
-                    <span
-                      v-if="m.is_expensive"
-                      class="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                    >
-                      Expensive
-                    </span>
-                  </div>
-                  <span class="text-[10px] font-mono text-zinc-400">{{ m.provider }}</span>
-                </div>
-                <p class="text-[10px] text-zinc-400 line-clamp-2 leading-relaxed">
-                  {{ m.description }}
-                </p>
-                <div class="flex items-center justify-between pt-1 border-t border-white/[0.04]">
-                  <span class="text-[10px] font-mono text-zinc-400">{{ m.id }}</span>
-                  <Check v-if="model === m.id" class="w-3.5 h-3.5 text-amber-400" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Active Model Input -->
-          <div class="pt-2 border-t border-white/[0.06]">
-            <label class="block text-xs font-medium text-zinc-300 mb-1.5">
-              Идентификатор активной модели (Model ID):
-            </label>
-            <input
-              v-model="model"
-              placeholder="e.g. cx/gpt-6-astra или llama-3.3-70b-versatile"
-              class="w-full px-3 py-2 bg-[#090a0c] border border-white/[0.1] rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-400/50"
-            />
-          </div>
-
-          <!-- Quick Presets -->
-          <div>
-            <label class="block text-xs font-medium text-zinc-400 mb-1.5">
-              Быстрые пресеты провайдеров:
-            </label>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="p in presets"
-                :key="p.id"
-                @click="applyPreset(p)"
-                class="px-2.5 py-1 rounded-lg text-xs font-mono border transition-all cursor-pointer"
-                :class="
-                  provider === p.id
-                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
-                "
-              >
-                {{ p.name }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 2: MODE (MANUAL VS MOA) -->
-        <div v-if="activeTab === 'mode'" class="space-y-4">
-          <div class="text-xs text-zinc-300 leading-relaxed">
-            Takiza поддерживает два режима выполнения задач, аналогично команде <code class="px-1.5 py-0.5 rounded bg-white/[0.06] text-amber-300 font-mono">/mode</code> в TUI:
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <!-- Manual Mode Card -->
-            <div
-              @click="selectMode('manual')"
-              class="p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 relative"
-              :class="
-                currentMode === 'manual'
-                  ? 'bg-amber-500/10 border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.08)]'
-                  : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]'
-              "
-            >
-              <div>
-                <div class="flex items-center justify-between mb-1.5">
-                  <div class="flex items-center gap-2">
-                    <ShieldCheck class="w-4 h-4 text-amber-400" />
-                    <span class="text-xs font-bold text-zinc-100">Takiza Manual</span>
-                  </div>
-                  <CheckCircle2 v-if="currentMode === 'manual'" class="w-4 h-4 text-amber-400" />
-                </div>
-                <p class="text-[11px] text-zinc-400 leading-relaxed">
-                  Ручной выбор конкретной модели из каталога frontier LLM. Вы всегда точно контролируете, какая модель обрабатывает каждый запрос.
-                </p>
-              </div>
-
-              <div class="text-[10px] font-mono text-zinc-500 pt-2 border-t border-white/[0.06]">
-                Базовый расход квоты • Прямой контроль
-              </div>
-            </div>
-
-            <!-- MoA Mode Card -->
-            <div
-              @click="selectMode('moa')"
-              class="p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 relative"
-              :class="
-                currentMode === 'moa'
-                  ? 'bg-emerald-500/10 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.08)]'
-                  : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]'
-              "
-            >
-              <div>
-                <div class="flex items-center justify-between mb-1.5">
-                  <div class="flex items-center gap-2">
-                    <Zap class="w-4 h-4 text-emerald-400 fill-current" />
-                    <span class="text-xs font-bold text-zinc-100">Takiza MoA</span>
-                    <span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      ⚡ ~45% Cheaper
-                    </span>
-                  </div>
-                  <CheckCircle2 v-if="currentMode === 'moa'" class="w-4 h-4 text-emerald-400" />
-                </div>
-                <p class="text-[11px] text-zinc-400 leading-relaxed">
-                  Смесь экспертов (Mixture of Agents). Запрос пользователя классифицируется LoRA-маршрутизатором и направляется в оптимальную модель.
-                </p>
-              </div>
-
-              <div class="text-[10px] font-mono text-emerald-400/90 pt-2 border-t border-white/[0.06]">
-                Авто-роутинг • До ~45% экономии токенов
-              </div>
-            </div>
-          </div>
-
-          <!-- Deep MoA Explainer -->
-          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2 text-[11px] text-zinc-400 leading-relaxed">
-            <div class="font-medium text-zinc-200 flex items-center gap-1.5">
-              <Bot class="w-3.5 h-3.5 text-emerald-400" />
-              <span>Таблица маршрутизации MoA:</span>
-            </div>
-            <ul class="space-y-1 list-disc list-inside text-zinc-400">
-              <li><strong class="text-zinc-200">System Architecture & SIMD:</strong> GPT-6 Astra</li>
-              <li><strong class="text-zinc-200">Concurrency & Async FFI:</strong> Claude Opus 5</li>
-              <li><strong class="text-zinc-200">Dependency & Multimodal UI:</strong> Claude Sonnet 5</li>
-              <li><strong class="text-zinc-200">Routine Backend & Tests:</strong> Gemini 3.7 Flash High</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- TAB 3: THEMES -->
-        <div v-if="activeTab === 'appearance'" class="space-y-3">
-          <div class="text-xs text-zinc-300 mb-1">
-            Выберите визуальную тему оформления (синхронизируется с TUI командой <code class="px-1.5 py-0.5 rounded bg-white/[0.06] text-amber-300 font-mono">/theme</code>):
-          </div>
-
-          <div class="space-y-2">
-            <div
-              v-for="t in THEME_OPTIONS"
-              :key="t.id"
-              @click="selectTheme(t.id)"
-              class="p-3 rounded-xl border flex items-center justify-between gap-3 transition-all cursor-pointer group"
-              :class="
-                currentTheme === t.id
-                  ? 'bg-white/[0.06] border-white/30 shadow-lg'
-                  : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
-              "
-            >
-              <div class="flex items-center gap-3">
-                <!-- Color Swatch Circle -->
-                <div
-                  class="w-8 h-8 rounded-xl flex items-center justify-center border shadow-xs"
-                  :style="{ backgroundColor: `${t.color}22`, borderColor: `${t.color}66` }"
-                >
-                  <div class="w-3.5 h-3.5 rounded-full" :style="{ backgroundColor: t.color }" />
-                </div>
-                <div>
-                  <div class="text-xs font-semibold text-zinc-100 flex items-center gap-2">
-                    <span>{{ t.name }}</span>
-                    <span
-                      v-if="currentTheme === t.id"
-                      class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/[0.1] text-zinc-200"
-                    >
-                      Активна
-                    </span>
-                  </div>
-                  <p class="text-[11px] text-zinc-400 mt-0.5">{{ t.desc }}</p>
-                </div>
-              </div>
-
-              <Check v-if="currentTheme === t.id" class="w-4 h-4 text-zinc-200" />
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 4: API & GENERAL -->
-        <div v-if="activeTab === 'general'" class="space-y-3.5">
-          <div>
-            <label class="block text-xs font-medium text-zinc-300 mb-1">
-              API Endpoint URL:
-            </label>
-            <input
-              v-model="baseUrl"
-              placeholder="https://anymodel.org/v1"
-              class="w-full px-3 py-2 bg-[#090a0c] border border-white/[0.1] rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-400/50"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="text-xs font-medium text-zinc-300">
-                API Ключ:
-              </label>
-              <button
-                @click="showApiKey = !showApiKey"
-                class="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
-              >
-                <EyeOff v-if="showApiKey" class="w-3 h-3" />
-                <Eye v-else class="w-3 h-3" />
-                <span>{{ showApiKey ? "Скрыть" : "Показать" }}</span>
-              </button>
-            </div>
-            <input
-              v-model="apiKey"
-              :type="showApiKey ? 'text' : 'password'"
-              placeholder="gsk_... или sk-..."
-              class="w-full px-3 py-2 bg-[#090a0c] border border-white/[0.1] rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-400/50"
-            />
-          </div>
-
-          <div>
-            <label class="block text-xs font-medium text-zinc-300 mb-1">
-              Прокси (HTTP/HTTPS/SOCKS5):
-            </label>
-            <input
-              v-model="proxy"
-              placeholder="socks5://127.0.0.1:1080 или http://..."
-              class="w-full px-3 py-2 bg-[#090a0c] border border-white/[0.1] rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-400/50"
-            />
-          </div>
-
-          <!-- Reasoning Effort -->
-          <div>
-            <label class="block text-xs font-medium text-zinc-300 mb-1 flex items-center gap-1.5">
-              <Brain class="w-3.5 h-3.5 text-amber-400" />
-              <span>Reasoning Effort (Глубина рассуждений для reasoning моделей):</span>
-            </label>
-            <div class="flex items-center gap-2">
-              <button
-                v-for="e in ['low', 'medium', 'high']"
-                :key="e"
-                @click="effort = e"
-                class="flex-1 py-1.5 rounded-lg border text-xs font-mono capitalize transition-all cursor-pointer"
-                :class="
-                  effort === e
-                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 font-semibold'
-                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:text-zinc-200'
-                "
-              >
-                {{ e }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Auto Approve Toggle -->
-          <div
-            class="p-3 rounded-xl border border-white/[0.08] bg-white/[0.02] flex items-center justify-between cursor-pointer"
-            @click="autoApprove = !autoApprove"
-          >
-            <div>
-              <div class="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                <ShieldAlert v-if="autoApprove" class="w-3.5 h-3.5 text-amber-400" />
-                <ShieldCheck v-else class="w-3.5 h-3.5 text-zinc-400" />
-                <span>Режим Auto-Approve (без подтверждений команд)</span>
-              </div>
-              <p class="text-[11px] text-zinc-500 mt-0.5">
-                {{ autoApprove ? "Команды выполняются автономно" : "Каждая bash команда запрашивает подтверждение" }}
-              </p>
-            </div>
-
-            <div
-              class="w-9 h-5 rounded-full transition-colors relative flex items-center p-0.5"
-              :class="autoApprove ? 'bg-amber-500' : 'bg-white/10'"
-            >
-              <div
-                class="w-4 h-4 rounded-full bg-white transition-transform"
-                :class="autoApprove ? 'translate-x-4' : 'translate-x-0'"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 5: INHERITED HARNESS CONFIG -->
-        <div v-if="activeTab === 'inherited'" class="space-y-3 font-mono text-[11px]">
-          <div class="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5 text-zinc-400">
-            <div class="text-zinc-200 font-sans font-semibold text-xs mb-1">
-              Синхронизированные пути конфигурации:
-            </div>
-            <div>• Файл настроек: ~/.config/takiza/config.json</div>
-            <div>• Рабочий каталог: {{ agentStore.config?.workspace_dir }}</div>
-            <div>• Модель по умолчанию: llama-3.3-70b-versatile</div>
-            <div>• Эндпоинт по умолчанию: https://anymodel.org/v1</div>
-            <div>• Активный режим: {{ agentStore.config?.mode || 'manual' }}</div>
-            <div>• Активная тема: {{ agentStore.config?.theme || 'amber' }}</div>
-          </div>
-
-          <div class="pt-2">
-            <button
-              @click="handleResetToHarness"
-              :disabled="isSaving"
-              class="w-full py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-300 text-xs font-sans font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RotateCcw class="w-3.5 h-3.5" />
-              <span>Сбросить переопределения к настройкам Takiza Harness</span>
+      <div v-else-if="activeTab === 'appearance'" class="space-y-7">
+        <div class="settings-row"><label for="interface-language">{{ tr('Язык интерфейса') }}</label>
+          <BaseSelect id="interface-language" :model-value="locale" :options="languageOptions" class="w-36" @update:model-value="selectLanguage" /></div>
+        <div>
+          <p class="text-xs text-zinc-400 mb-3">{{ tr('Тема') }}</p>
+          <div class="settings-theme-grid">
+            <button v-for="theme in THEME_OPTIONS" :key="theme.id" type="button" @click="selectTheme(theme.id)" :aria-pressed="currentTheme === theme.id"
+              :title="tr(theme.desc)" class="settings-theme-option" :class="{'settings-theme-selected':currentTheme === theme.id}">
+              <span class="settings-theme-swatch" :style="{backgroundColor:theme.color}"><Check v-if="currentTheme === theme.id" class="w-3 h-3 text-black/70" /></span>
+              <span>{{ theme.id.charAt(0).toUpperCase() + theme.id.slice(1) }}</span>
             </button>
           </div>
         </div>
+        <p class="text-[11px] text-zinc-600">{{ tr('Изменения применяются сразу.') }}</p>
       </div>
 
-      <!-- Modal Footer -->
-      <div class="px-5 py-3 border-t border-white/[0.08] bg-white/[0.02] flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span v-if="saveSuccess" class="text-xs text-emerald-400 flex items-center gap-1">
-            <Check class="w-3.5 h-3.5" />
-            <span>Настройки успешно сохранены!</span>
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button
-            @click="emit('close')"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] transition-colors cursor-pointer"
-          >
-            Отмена
-          </button>
-          <button
-            @click="handleSave"
-            :disabled="isSaving"
-            class="px-4 py-1.5 rounded-xl text-xs font-medium bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-md shadow-amber-950/30"
-          >
-            <Save class="w-3.5 h-3.5" />
-            <span>{{ isSaving ? "Сохранение..." : "Сохранить" }}</span>
-          </button>
-        </div>
+      <div v-else class="space-y-5">
+        <div class="settings-row"><div><label for="command-approval">{{ tr('Подтверждения команд') }}</label><p class="settings-hint">{{ autoApprove ? tr('Команды выполняются автономно') : tr('Перед запуском команд') }}</p></div>
+          <button id="command-approval" type="button" role="switch" :aria-checked="!autoApprove" :aria-label="tr('Подтверждения команд')" @click="autoApprove = !autoApprove" class="settings-switch" :class="{'settings-switch-on':!autoApprove}"><span /></button></div>
+        <div class="settings-row"><label for="reasoning-effort">{{ tr('Глубина рассуждений') }}</label><BaseSelect v-if="availableEfforts.length" id="reasoning-effort" v-model="selectedEffort" :options="effortOptions" class="w-36" /><span v-else class="text-xs text-zinc-500">{{ tr('Модель не поддерживает смену effort') }}</span></div>
+        <div class="settings-row"><div><label for="max-steps">{{ tr('Лимит шагов агента') }}</label><p class="settings-hint">{{ tr('0 — без ограничения') }}</p></div><input id="max-steps" v-model.number="maxSteps" type="number" min="0" step="1" class="settings-input !w-28 text-right" /></div>
+        <details class="settings-disclosure pt-3 border-t border-white/[0.06]"><summary><ChevronRight class="w-3 h-3" />{{ tr('Дополнительно') }}</summary>
+          <div class="pt-4 space-y-4">
+            <div><label for="settings-proxy" class="block text-xs text-zinc-400 mb-2">{{ tr('Прокси') }}</label><input id="settings-proxy" v-model="proxy" class="settings-input font-mono" placeholder="http://… / socks5://…" /></div>
+            <div><p class="text-[11px] text-zinc-500 mb-1">{{ tr('Проект') }}</p><p class="text-[11px] text-zinc-400 break-all select-text">{{ agentStore.config?.workspace_dir }}</p></div>
+            <p class="text-[10px] text-zinc-600">{{ tr('Профили подключений общие с CLI.') }}</p>
+          </div>
+        </details>
       </div>
     </div>
-  </div>
+    <footer class="settings-footer">
+      <div class="min-w-0 flex-1 mr-4">
+        <p v-if="saveError" role="alert" class="text-[11px] text-rose-300 break-words">{{ saveError }}</p>
+        <p v-else-if="uiBusy" role="status" class="flex gap-2 items-center text-[11px] text-zinc-500"><LoaderCircle class="w-3 h-3 animate-spin motion-reduce:animate-none" />{{ tr('Сохранение...') }}</p>
+        <button v-else-if="hasPendingChanges" type="button" @click="loadDraft" class="settings-text-action">{{ tr('Сбросить изменения') }}</button>
+        <p v-else-if="appearanceStatus" role="status" class="text-[11px] text-zinc-500">{{ appearanceStatus }}</p>
+      </div>
+      <button v-if="hasPendingChanges" type="button" @click="emit('close')" :disabled="uiBusy" class="settings-cancel">{{ tr('Отмена') }}</button>
+      <button type="button" @click="handleSave" :disabled="uiBusy" class="settings-save">{{ addingProvider ? tr('Добавить и выбрать') : hasPendingChanges ? tr('Сохранить') : tr('Готово') }}</button>
+    </footer>
+  </BaseModal>
 </template>

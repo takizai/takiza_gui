@@ -1,5 +1,7 @@
+import { tr } from "../i18n";
 import MarkdownIt from "markdown-it";
-import hljs from "highlight.js";
+// Bundle common languages rather than every grammar; unknown languages remain plain code.
+import hljs from "highlight.js/lib/common";
 
 // Global helper for code block copy buttons inside rendered markdown
 if (typeof window !== "undefined") {
@@ -9,7 +11,7 @@ if (typeof window !== "undefined") {
       navigator.clipboard.writeText(decodeURIComponent(code));
       const span = btn.querySelector("span") || btn;
       const oldText = span.textContent;
-      span.textContent = "Copied!";
+      span.textContent = tr("Скопировано");
       setTimeout(() => {
         span.textContent = oldText;
       }, 1500);
@@ -32,7 +34,7 @@ function renderCodeCard(code: string, lang: string): string {
     highlighted = md.utils.escapeHtml(cleanCode);
   }
 
-  const displayLang = (lang || "code").toLowerCase();
+  const displayLang = md.utils.escapeHtml((lang || "code").toLowerCase());
   const encodedCode = encodeURIComponent(cleanCode);
 
   return `<div class="code-card-wrapper">
@@ -42,7 +44,7 @@ function renderCodeCard(code: string, lang: string): string {
       <span class="font-mono text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">${displayLang}</span>
     </div>
     <button class="copy-code-trigger flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.08] transition-colors cursor-pointer" data-code="${encodedCode}" onclick="window.__copyCode && window.__copyCode(this)">
-      <span>Copy</span>
+      <span>${tr("Копировать")}</span>
     </button>
   </div>
   <pre class="hljs"><code class="language-${displayLang}">${highlighted}</code></pre>
