@@ -41,6 +41,7 @@ src-tauri/target/
 scripts/*
 !scripts/sync-version.mjs
 !scripts/release-notes.mjs
+!scripts/check-tauri-versions.mjs
 *.safetensors
 *.pt
 *.pth
