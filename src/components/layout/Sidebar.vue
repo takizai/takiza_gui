@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from "../../i18n";
 import { ref, computed, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import BaseModal from "../common/BaseModal.vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useSessionStore } from "../../stores/sessionStore";
 import { useAgentStore } from "../../stores/agentStore";
@@ -17,12 +19,25 @@ const agentStore = useAgentStore();
 const searchQuery = ref("");
 const switchError = ref("");
 const switching = ref(false);
+const pendingWorkspace = ref('');
+async function confirmWorkspace() {
+  if (!pendingWorkspace.value || switching.value || agentStore.operationBusy) return;
+  const path = pendingWorkspace.value;
+  switching.value = true;
+  switchError.value = '';
+  try {
+    await agentStore.setWorkspaceDir(path);
+    pendingWorkspace.value = '';
+    await sessionStore.fetchSessions();
+  } catch (error) { switchError.value = String(error); }
+  finally { switching.value = false; }
+}
 const filteredSessions = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
   return query ? sessionStore.sessions.filter(s => (s.title || s.id).toLowerCase().includes(query)) : sessionStore.sessions;
 });
 async function switchWorkspace() {
-  if (switching.value || agentStore.operationBusy) return;
+  if (switching.value || pendingWorkspace.value || agentStore.operationBusy) return;
   switching.value = true;
   switchError.value = "";
   try {
@@ -33,6 +48,8 @@ async function switchWorkspace() {
       defaultPath: agentStore.config?.workspace_dir || undefined,
     });
     if (!path || path === agentStore.config?.workspace_dir) return;
+    const initialized = await invoke<boolean>('workspace_has_takiza', { path });
+    if (!initialized) { pendingWorkspace.value = path; return; }
     await agentStore.setWorkspaceDir(path);
     await sessionStore.fetchSessions();
   } catch (error) { switchError.value = String(error); }
@@ -75,4 +92,15 @@ async function switchWorkspace() {
     </div>
   </aside>
   </Transition>
+  <BaseModal :is-open="!!pendingWorkspace" :title="tr('Новая папка проекта')" size="sm" :dismissible="!switching" @close="pendingWorkspace = ''; switchError = ''">
+    <div class="px-5 py-4 space-y-3 text-sm text-zinc-400">
+      <p>{{ tr('В этой папке ещё не использовалась Takiza. При работе здесь будут сохраняться диалоги, вложения и контрольные точки в папке .takiza.') }}</p>
+      <p class="break-all text-xs text-zinc-500">{{ pendingWorkspace }}</p>
+      <p v-if="switchError" role="alert" class="text-xs text-rose-300">{{ tr(switchError) }}</p>
+    </div>
+    <div class="flex justify-end gap-2 px-5 pb-5">
+      <button type="button" class="px-3 py-2 rounded-lg text-xs text-zinc-400 hover:bg-white/5 disabled:opacity-40" :disabled="switching" @click="pendingWorkspace = ''; switchError = ''">{{ tr('Отмена') }}</button>
+      <button type="button" class="px-3 py-2 rounded-lg text-xs text-zinc-200 bg-white/10 hover:bg-white/15 disabled:opacity-40" :disabled="switching || agentStore.operationBusy" @click="confirmWorkspace">{{ switching ? tr('Открытие…') : tr('Открыть папку') }}</button>
+    </div>
+  </BaseModal>
 </template>

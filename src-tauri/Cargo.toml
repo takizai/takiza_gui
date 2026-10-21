@@ -1,6 +1,6 @@
 [package]
 name = "takiza-gui"
-version = "0.2.0"
+version = "0.2.1"
 description = "Takiza Code desktop AI coding agent"
 authors = ["Takiza contributors"]
 homepage = "https://github.com/takizai/takiza_gui"

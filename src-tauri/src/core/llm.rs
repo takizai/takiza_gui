@@ -311,7 +311,8 @@ impl LlmClient {
         config.base_url = crate::core::config::normalize_base_url(&config.base_url);
         let mut builder = Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(std::time::Duration::from_secs(120));
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(120));
 
         let direct_client = if let Some(ref proxy_str) = config.proxy {
             if let Ok(proxy) = reqwest::Proxy::all(proxy_str) {
@@ -320,7 +321,8 @@ impl LlmClient {
             Some(
                 Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(120))
+                    .connect_timeout(std::time::Duration::from_secs(30))
+                    .read_timeout(std::time::Duration::from_secs(120))
                     .build()
                     .unwrap_or_default(),
             )
@@ -625,6 +627,7 @@ impl LlmClient {
         let mut byte_stream = resp.bytes_stream();
         let mut sse_buffer = Vec::<u8>::new();
         let mut done_stream = false;
+        let mut completed = false;
 
         while !done_stream {
             let chunk_opt = tokio::select! {
@@ -637,7 +640,7 @@ impl LlmClient {
             let chunk_bytes = match chunk_opt {
                 Some(Ok(bytes)) => Some(bytes),
                 Some(Err(e)) => {
-                    return Err(e).context("Error reading stream chunk from LLM");
+                    anyhow::bail!("LLM stream interrupted before completion: {}. Check the connection and retry the message.", self.redact(&format!("{:#}", e.without_url())));
                 }
                 None => {
                     if sse_buffer.is_empty() { break; }
@@ -661,6 +664,7 @@ impl LlmClient {
                 if let Some(data) = trimmed.strip_prefix("data:") {
                     let data = data.trim();
                     if data == "[DONE]" {
+                        completed = true;
                         done_stream = true;
                         break;
                     }
@@ -670,15 +674,15 @@ impl LlmClient {
                         Err(_) => continue,
                     };
 
+                    if let Some(error) = json_val.get("error").filter(|error| !error.is_null()) {
+                        anyhow::bail!("Provider stream error: {}", self.redact(&error.to_string()));
+                    }
                     let choice = match json_val.get("choices").and_then(|c| c.as_array()).and_then(|arr| arr.get(0)) {
                         Some(c) => c,
                         None => continue,
                     };
 
-                    let delta = match choice.get("delta") {
-                        Some(d) => d,
-                        None => continue,
-                    };
+                    let delta = choice.get("delta").unwrap_or(&Value::Null);
 
                     // 1. Check reasoning / thought field (DeepSeek, OpenRouter, etc.)
                     if let Some(reasoning) = delta.get("reasoning").or_else(|| delta.get("reasoning_content")).and_then(|r| r.as_str()) {
@@ -748,9 +752,16 @@ impl LlmClient {
                             }
                         }
                     }
+                    if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
+                        anyhow::ensure!(matches!(reason, "stop" | "tool_calls" | "function_call"), "Provider ended the response with {reason}; no tools were executed.");
+                        completed = true;
+                        done_stream = true;
+                        break;
+                    }
                 }
             }
         }
+        anyhow::ensure!(completed, "LLM stream closed before completion. Retry the message; no tools were executed.");
 
         let (rem_th, rem_as) = think_parser.finish();
         if let Some(th) = rem_th {

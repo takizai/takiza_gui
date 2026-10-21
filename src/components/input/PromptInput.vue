@@ -10,6 +10,7 @@ import { reasoningEfforts } from "../../utils/effort";
 import { useProviderModels } from "../../composables/useProviderModels";
 import { useAgentStore } from "../../stores/agentStore";
 import { ArrowUp, Square, ChevronDown, Paperclip, FileText, X, LoaderCircle } from "lucide-vue-next";
+import BaseSelect from "../common/BaseSelect.vue";
 import ModelContextMenu from "../common/ModelContextMenu.vue";
 import { getPromptCompletions, parsePromptInput, type Completion } from "../../utils/promptCommands";
 import { usePromptCommands } from "../../composables/usePromptCommands";
@@ -59,7 +60,21 @@ const caret = ref(0);
 const selectedCompletion = ref(0);
 const dismissedCompletion = ref("");
 const draftSignature = computed(() => `${caret.value}:${inputPrompt.value}`);
-const completions = computed(() => getPromptCompletions(inputPrompt.value, caret.value, agentStore.availableSkills, reasoningEfforts(agentStore.config?.model || '', agentStore.config?.api_type, providerModels.value.find(m => m.id === agentStore.config?.model))));
+const availableEfforts = computed(() => reasoningEfforts(agentStore.config?.model || '', agentStore.config?.api_type,
+  providerModels.value.find(model => model.id === agentStore.config?.model)
+    ?? connection.value.models?.find(model => model.id === agentStore.config?.model)));
+const effortOptions = computed(() => [{ value: '', label: availableEfforts.value.length ? tr('Автоматически') : tr('Не поддерживается') }, ...availableEfforts.value.map(value => ({ value, label: value }))]);
+const selectedEffort = computed(() => availableEfforts.value.includes(agentStore.config?.effort as typeof availableEfforts.value[number]) ? agentStore.config?.effort || '' : '');
+const savingEffort = ref(false);
+async function changeEffort(value: string) {
+  if (savingEffort.value || agentStore.operationBusy) return;
+  savingEffort.value = true;
+  error.value = '';
+  try { await agentStore.setEffort(value); }
+  catch (cause) { error.value = String(cause); }
+  finally { savingEffort.value = false; }
+}
+const completions = computed(() => getPromptCompletions(inputPrompt.value, caret.value, agentStore.availableSkills, availableEfforts.value));
 const showCompletions = computed(() => !commandBusy.value
   && completions.value.length > 0 && dismissedCompletion.value !== draftSignature.value);
 const activeCompletionId = computed(() => showCompletions.value ? `prompt-option-${selectedCompletion.value}` : undefined);
@@ -341,14 +356,24 @@ onUnmounted(() => { disposed = true; unlistenDrop?.(); });
           <Square v-if="agentStore.isStreaming" class="w-3 h-3 fill-current" /><ArrowUp v-else class="w-4 h-4" />
         </button>
       </div>
-      <div class="relative mt-2 px-1 w-fit">
-        <button @click="isModelMenuOpen = !isModelMenuOpen" @contextmenu.prevent="isModelMenuOpen = true"
-          class="flex items-center gap-1.5 py-1 px-1 text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer rounded-md"
-          :title="tr('Модель: {0}', {'0': agentStore.config?.model || tr('не выбрана')})" :aria-label='tr("Выбор модели")' :aria-expanded="isModelMenuOpen">
-          <span class="max-w-60 truncate">{{ currentModelShort }}</span><ChevronDown class="w-3 h-3" />
-        </button>
-        <ModelContextMenu :is-open="isModelMenuOpen" :direction="welcome ? 'down' : 'up'" align="left"
-          @close="isModelMenuOpen = false" @open-settings="emit('open-settings')" />
+      <div class="mt-2 flex items-center justify-between gap-3 px-1">
+        <div class="relative min-w-0">
+          <button @click="isModelMenuOpen = !isModelMenuOpen" @contextmenu.prevent="isModelMenuOpen = true"
+            class="flex max-w-full items-center gap-1.5 py-1 px-1 text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer rounded-md"
+            :title="tr('Модель: {0}', {'0': agentStore.config?.model || tr('не выбрана')})" :aria-label='tr("Выбор модели")' :aria-expanded="isModelMenuOpen">
+            <span class="max-w-60 truncate min-w-0">{{ currentModelShort }}</span><ChevronDown class="w-3 h-3 shrink-0" />
+          </button>
+          <ModelContextMenu :is-open="isModelMenuOpen" :direction="welcome ? 'down' : 'up'" align="left"
+            @close="isModelMenuOpen = false" @open-settings="emit('open-settings')" />
+        </div>
+        <div class="flex items-center gap-1 max-w-[48%] min-w-0 shrink-0 text-[11px] text-zinc-500">
+          <label for="prompt-effort" class="shrink-0">Effort</label>
+          <BaseSelect id="prompt-effort" :model-value="selectedEffort" :options="effortOptions"
+            :disabled="!availableEfforts.length || agentStore.operationBusy || savingEffort"
+            :aria-label="tr('Глубина рассуждений')" :title="availableEfforts.length ? tr('Глубина рассуждений') : tr('Модель не поддерживает смену effort')"
+            class="!w-auto min-w-0 !min-h-0 !border-transparent !bg-transparent !px-1 !py-1 !text-[11px] !text-zinc-500"
+            @update:model-value="changeEffort" />
+        </div>
       </div>
     </div>
   </div>

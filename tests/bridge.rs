@@ -80,7 +80,7 @@ async fn attachments_keep_documents_as_paths_and_images_in_multimodal_messages()
 #[tokio::test]
 async fn sse_split_utf8_and_unterminated_last_event_are_preserved() {
     let ws = Workspace::new();
-    let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Привет 🐹\"}}]}".as_bytes().to_vec();
+    let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Привет 🐹\"},\"finish_reason\":\"stop\"}]}".as_bytes().to_vec();
     let (url, _, task) = server(body, 1, true).await;
     let llm = LlmClient::new(config(ws.0.clone(), url)); let (tx, mut rx) = mpsc::channel(100);
     let messages: Vec<ChatMessage> = serde_json::from_value(serde_json::json!([{"role":"user","content":"hi"}])).unwrap();
@@ -446,4 +446,59 @@ async fn late_title_never_renames_a_different_chat() {
     *state.current_session.lock().await=Some(Session::new("fixture".into()));
     task.await.unwrap();assert!(rx.recv().await.is_none());
     assert!(state.current_session.lock().await.as_ref().unwrap().title.is_none());
+}
+
+#[tokio::test]
+async fn workspace_detection_is_read_only_and_requires_a_takiza_directory() {
+    let ws = Workspace::new();
+    let path = ws.0.to_string_lossy().to_string();
+    assert!(!commands::workspace_has_takiza(path.clone()).await.unwrap());
+    assert!(!ws.0.join(".takiza").exists());
+    std::fs::write(ws.0.join(".takiza"), "not a directory").unwrap();
+    assert!(!commands::workspace_has_takiza(path.clone()).await.unwrap());
+    std::fs::remove_file(ws.0.join(".takiza")).unwrap();
+    std::fs::create_dir(ws.0.join(".takiza")).unwrap();
+    assert!(commands::workspace_has_takiza(path).await.unwrap());
+    assert!(commands::workspace_has_takiza(ws.0.join("missing").to_string_lossy().into()).await.is_err());
+}
+
+#[tokio::test]
+async fn stream_requires_completion_and_rejects_truncated_tool_calls() {
+    let ws = Workspace::new();
+    for (body, success) in [
+        ("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n", true),
+        ("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n", true),
+        ("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n", false),
+        ("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"list_dir\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"length\"}]}\n\n", false),
+        ("data: {\"error\":{\"message\":\"provider failed\"}}\n\ndata: [DONE]\n\n", false),
+    ] {
+        let (url, _, task) = server(body.as_bytes().to_vec(), 1, false).await;
+        let llm = LlmClient::new(config(ws.0.clone(), url));
+        let (tx, _rx) = mpsc::channel(100);
+        let result = llm.chat_step_stream(&[], &tx, &CancellationToken::new()).await;
+        assert_eq!(result.is_ok(), success, "{body}: {result:?}");
+        task.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn completed_stream_does_not_wait_for_a_broken_http_body() {
+    let ws = Workspace::new();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 8192];
+        socket.read(&mut request).await.unwrap();
+        // A proxy closes the HTTP body without its terminating chunk after the
+        // provider has already sent a complete response.
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":\"stop\"}]}\n\n";
+        socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n").await.unwrap();
+        socket.write_all(format!("{:x}\r\n{}\r\n", body.len(), body).as_bytes()).await.unwrap();
+    });
+    let llm = LlmClient::new(config(ws.0.clone(), format!("http://{address}/v1")));
+    let (tx, _rx) = mpsc::channel(100);
+    let response = llm.chat_step_stream(&[], &tx, &CancellationToken::new()).await.unwrap();
+    assert!(matches!(response, LlmResponse::Message(ref text) if text == "done"));
+    task.await.unwrap();
 }

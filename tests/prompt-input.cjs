@@ -213,5 +213,12 @@ function key(name, extra = {}) {
   await pick([source]);
   key('Escape'); key('Escape'); await flush();
   assert.equal(input.pendingFiles.value.length,0);
+  agent.config.model='o3-mini';agent.config.effort='high';
+  assert.deepEqual(Array.from(input.availableEfforts.value),['low','medium','high']);
+  assert.equal(input.selectedEffort.value,'high');
+  await input.changeEffort('low');assert.equal(agent.config.effort,'low');
+  await input.changeEffort('');assert.equal(input.selectedEffort.value,'');
+  agent.config.effort='xhigh';assert.equal(input.selectedEffort.value,'','unsupported saved effort leaked into picker');
+  agent.operationBusy=true;await input.changeEffort('high');assert.equal(agent.config.effort,'xhigh');agent.operationBusy=false;
   console.log('PASS file picker, capabilities, model switch, format and size validation, attachment-only send, command dispatch, no model calls for commands, argument validation, skills, keyboard selection, IME, draft preservation, and errors');
 })().catch(error => { console.error(error); process.exitCode = 1; });

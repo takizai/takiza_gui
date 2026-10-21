@@ -238,9 +238,11 @@ impl LlmClient {
             let mut attempt = 0;
             loop {
                 attempt += 1;
-                let request = self
-                    .authorize(self.client.post(&url).timeout(timeout))
-                    .json(&body);
+                // Streaming uses the client's per-read timeout, so active long answers
+                // are not cut off by a total request deadline.
+                let request = self.client.post(&url);
+                let request = if stream { request } else { request.timeout(timeout) };
+                let request = self.authorize(request).json(&body);
                 let response = tokio::select! {
                     _ = cancel.cancelled() => anyhow::bail!("Request cancelled"),
                     result = request.send() => result.map_err(|_| anyhow::anyhow!("Provider request failed"))?,

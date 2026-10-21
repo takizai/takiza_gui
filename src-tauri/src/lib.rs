@@ -41,6 +41,7 @@ pub fn run() {
             list_files,
             get_file_content,
             set_workspace_dir,
+            workspace_has_takiza,
             reset_to_harness_defaults,
             minimize_window,
             toggle_maximize_window,

@@ -649,6 +649,17 @@ pub async fn get_file_content(path: String, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
+pub async fn workspace_has_takiza(path: String) -> Result<bool, String> {
+    let directory = std::path::PathBuf::from(&path);
+    if !directory.is_dir() { return Err(format!("Указанный путь не является директорией: {}", path)); }
+    match fs::metadata(directory.join(".takiza")) {
+        Ok(metadata) => Ok(metadata.is_dir()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
 pub async fn set_workspace_dir(
     path: String,
     state: State<'_, AppState>,

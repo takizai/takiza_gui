@@ -1602,5 +1602,21 @@
   "Опрос завершён досрочно. Уже данные ответы сохранены.": [
     "The interview ended early. Answers already given were preserved.",
     "访谈已提前结束，已有回答已保留。"
+  ],
+  "Новая папка проекта": [
+    "New project folder",
+    "新项目文件夹"
+  ],
+  "В этой папке ещё не использовалась Takiza. При работе здесь будут сохраняться диалоги, вложения и контрольные точки в папке .takiza.": [
+    "Takiza has not been used in this folder yet. Conversations, attachments and checkpoints will be saved here in the .takiza folder.",
+    "此文件夹尚未使用过 Takiza。对话、附件和检查点将保存在此处的 .takiza 文件夹中。"
+  ],
+  "Открыть папку": [
+    "Open folder",
+    "打开文件夹"
+  ],
+  "Не поддерживается": [
+    "Not supported",
+    "不支持"
   ]
 }

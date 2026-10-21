@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.1
+
+- Added a reasoning effort selector beside the prompt, opposite the model picker. Choices follow model capabilities, and unsupported models display “Not supported”.
+- Fixed long-running LLM streams being cut off by the total request timeout. Completed Chat Completions responses no longer fail when a proxy closes the HTTP body without its final chunk; incomplete responses and truncated tool calls are rejected.
+- Added a confirmation dialog before opening a project folder without a `.takiza` directory, explaining where conversations, attachments and checkpoints will be stored.
+- Unified the main interface, dialogs and dropdowns on the system font, including Segoe UI on Windows.
+- Pinned compatible Tauri JavaScript and Rust versions and added version checks before desktop packaging.
+
 ## 0.2.0
 
 - Redesigned the chat, settings, skills and model picker with a minimal interface, smooth streaming, modal and history transitions, and Russian, English and Chinese localization. Added the public TUI themes to the GUI.

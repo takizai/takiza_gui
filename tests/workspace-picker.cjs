@@ -6,7 +6,7 @@ const ts = require('typescript');
 const vue = require('vue');
 const { parse, compileScript } = require('@vue/compiler-sfc');
 const pending = [], switches = [];
-let refreshed = 0, failSwitch = false;
+let refreshed = 0, failSwitch = false, initialized = true;
 const agent = vue.reactive({config:{workspace_dir:'/workspace/original'},operationBusy:false,
  async setWorkspaceDir(path) {
   if (failSwitch) throw new Error('Cannot open directory');
@@ -20,6 +20,8 @@ const code = ts.transpileModule(compileScript(descriptor,{id:'workspace-test'}).
 const exportsObject = {};
 vm.runInNewContext(code,{exports:exportsObject,require(name){
  if(name==='vue')return vue;
+ if(name==='@tauri-apps/api/core')return {invoke:async()=>initialized};
+ if(name.endsWith('.vue'))return {};
  if(name==='@tauri-apps/plugin-dialog')return {open:options=>new Promise((resolve,reject)=>pending.push({options,resolve,reject}))};
  if(name.includes('/i18n'))return {useI18n:()=>({tr:text=>text})};
  if(name.includes('/agentStore'))return {useAgentStore:()=>agent};
@@ -46,6 +48,15 @@ const sidebar=exportsObject.default.setup({isOpen:true},{expose(){},emit(){}});
  failSwitch=true;const failed=sidebar.switchWorkspace();pending[4].resolve('/missing');await failed;
  assert.equal(sidebar.switchError.value,'Error: Cannot open directory');
  assert.equal(agent.config.workspace_dir,'/workspace/new project');assert.equal(refreshed,1);
- agent.operationBusy=true;await sidebar.switchWorkspace();assert.equal(pending.length,5);
+ initialized=false;
+ const fresh=sidebar.switchWorkspace();pending[5].resolve('/workspace/fresh');await fresh;
+ assert.equal(sidebar.pendingWorkspace.value,'/workspace/fresh');assert.equal(switches.length,1);
+ await sidebar.switchWorkspace();assert.equal(pending.length,6,'picker opened behind warning');
+ await sidebar.confirmWorkspace();assert.equal(sidebar.pendingWorkspace.value,'/workspace/fresh','failed open dismissed warning');
+ failSwitch=false;await sidebar.confirmWorkspace();assert.equal(sidebar.pendingWorkspace.value,'');
+ assert.equal(agent.config.workspace_dir,'/workspace/fresh');assert.equal(refreshed,2);
+ const cancelFresh=sidebar.switchWorkspace();pending[6].resolve('/workspace/cancel');await cancelFresh;
+ sidebar.pendingWorkspace.value='';assert.equal(switches.length,2,'cancel changed workspace');
+ agent.operationBusy=true;await sidebar.switchWorkspace();assert.equal(pending.length,7);
  console.log('PASS directory-only picker, current starting path, duplicate guard, cancellation, project refresh, same-directory guard and recoverable errors');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -7,6 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 test('old tags cannot downgrade a release; mismatched release tags fail before writes', () => {
   const root = new URL('../', import.meta.url);
+  const expectedVersion = JSON.parse(readFileSync(new URL('package.json', root))).version;
   const dir = mkdtempSync(join(tmpdir(), 'takiza-version-'));
   try {
     mkdirSync(join(dir, 'scripts'));
@@ -23,18 +24,18 @@ test('old tags cannot downgrade a release; mismatched release tags fail before w
     delete env.RELEASE_TAG;
     execFileSync(process.execPath, ['scripts/sync-version.mjs'], { cwd: dir, env });
     const version = JSON.parse(readFileSync(join(dir, 'package.json'))).version;
-    assert.equal(version, '0.2.0');
+    assert.equal(version, expectedVersion);
     assert.equal(JSON.parse(readFileSync(join(dir, 'src-tauri/tauri.conf.json'))).version, version);
     const manifest = readFileSync(join(dir, 'src-tauri/Cargo.toml'), 'utf8');
     // A mismatched tag must not silently rewrite any release manifest.
-    writeFileSync(join(dir, 'src-tauri/Cargo.toml'), manifest.replace('0.2.0', '0.0.1'));
+    writeFileSync(join(dir, 'src-tauri/Cargo.toml'), manifest.replace(version, '0.0.1'));
     const result = spawnSync(process.execPath, ['scripts/sync-version.mjs'], {
       cwd: dir, env: { ...env, RELEASE_TAG: 'v9.9.9' }, encoding: 'utf8',
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /does not match/);
     assert.match(readFileSync(join(dir, 'src-tauri/Cargo.toml'), 'utf8'), /0\.0\.1/);
-    execFileSync(process.execPath, ['scripts/sync-version.mjs'], { cwd: dir, env: { ...env, RELEASE_TAG: 'v0.2.0' } });
+    execFileSync(process.execPath, ['scripts/sync-version.mjs'], { cwd: dir, env: { ...env, RELEASE_TAG: `v${version}` } });
     assert.equal(readFileSync(join(dir, 'src-tauri/Cargo.toml'), 'utf8'), manifest);
   } finally {
     rmSync(dir, { recursive: true, force: true });

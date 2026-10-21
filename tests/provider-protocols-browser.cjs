@@ -27,7 +27,7 @@ const fs=require('node:fs');const path=require('node:path');const assert=require
  const settings=page.getByRole('dialog',{name:'Настройки'});
  const openSettings=async()=>{await page.getByRole('button',{name:'Действия и настройки'}).click();await page.getByRole('button',{name:'Настройки',exact:true}).click();await settings.waitFor();await settings.evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).map(animation=>animation.finished));});};
  await openSettings();
- assert((await settings.evaluate(el=>getComputedStyle(el).fontFamily)).includes('Noto Sans'));
+ assert((await settings.evaluate(el=>getComputedStyle(el).fontFamily)).includes('system-ui'));
  await page.screenshot({path:'/tmp/takiza-settings-minimal.png'});
  const content=page.locator('.settings-content');const originalScroll=await content.evaluate(el=>el.scrollTop);
  const trigger=page.locator('#settings-model');const originalTrigger=await trigger.boundingBox();
